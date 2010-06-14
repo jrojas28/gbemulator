@@ -34,6 +34,11 @@
 
 static void set_switchable_rom();
 static void set_switchable_ram();
+static void save_sram();
+static int find_sram_file();
+static void load_sram();
+
+char ram_ext[] = ".sav";
 
 Cart cart;
 
@@ -305,12 +310,22 @@ int load_rom(const char* fn) {
 
 	cart.is_loaded = 1;
 
+
 	printf("\tmbc: %u\trom size: %u\tram size:%u\n", cart.mbc, 
 	    		cart.rom_size, cart.ram_size);
 	
-//	std::cout << "	mbc: " << cart.mbc << " | rom size: " << cart.rom_size
-//            << " | ram size: " << cart.ram_size << "\n";
+	cart.rom_fn = malloc(sizeof(char) * (strlen(fn) + 1));
+	strcpy(cart.rom_fn, fn);
 
+	/* if the cart has ram, see if a ram file was saved previously */
+	if (cart.ram_size > 0) {
+		if (find_sram_file()) {
+			load_sram();
+		} else {
+			printf("could not find sram file\n");
+		}
+					
+	}
 	return 0;
 	
 }
@@ -324,7 +339,7 @@ void cart_reset() {
 	cart.rom_bank = 1;
 	cart.rom_block = 0;
 	cart.ram_bank = 0;
-	bzero(cart.ram, cart.ram_size);
+	//bzero(cart.ram, cart.ram_size); // supposed to be commented!
 	if (cart.mbc == 1)
 		cart.mbc_mode = MBC1_MODE_16MROM_8KRAM;
 	set_vector_block(MEM_ROM_BANK_0, cart.rom, SIZE_ROM_BANK_0);
@@ -336,13 +351,16 @@ void cart_reset() {
 void unload_rom() {
 	// check that rom is already loaded
 	assert(cart.is_loaded == 1);
+	if (cart.ram_size > 0)
+		save_sram();
 	free(cart.ram);
 	free(cart.rom);
 	free(cart.rom_title);
+	free(cart.rom_fn);
 	cart.ram = 0;
 	cart.rom = 0;
 	cart.rom_title = 0;
-	cart.rom_path = 0;
+	cart.rom_fn = 0;
 	cart.is_loaded = 0;
 }
 
@@ -365,7 +383,6 @@ void write_rom(Word address, Byte value) {
 	if (cart.mbc == 1) {
 		// mbc1 ram bank enable/disable
 		if (address < 0x2000) {
-			// STUBBED
 			return;
 		}
 		// mbc1 rom bank selection
@@ -462,5 +479,82 @@ Byte read_rom(Word address) {
 		assert(0);
 		return 0;
 	}
+}
+
+/*
+ * saves the state of the ram to a file. 
+ * TODO: place the sram file somewhere intelligent
+ */
+static void save_sram() {
+	char *fn;
+	FILE *fp;
+	size_t c;
+	fn = malloc(strlen(cart.rom_fn) + strlen(ram_ext) + 1);
+	strcpy(fn, cart.rom_fn);
+	strcat(fn, ram_ext);
+	fp = fopen(fn, "w");
+	if (fp == NULL) {
+		fprintf(stderr, "could not open sram file for writing: %s\n", fn);
+		perror("fopen");
+		free(fn);
+		return;
+	}
+	printf("saving sram to %s...\n", fn);
+	c = fwrite(cart.ram, sizeof(Byte), cart.ram_size, fp);
+	if (c < cart.ram_size) {
+		fprintf(stderr, "error: wrote only %zu of %u bytes to sram file\n", c, cart.ram_size);
+		perror("fopen");
+		fclose(fp);
+		free(fn);
+		return;
+	}
+	fclose(fp);
+	free(fn);
+}
+
+/*
+ * searches for an sram files. returns 1 if found, otherwise 0.
+ */
+int find_sram_file() {
+	char *fn;
+	struct stat fstats;
+	fn = malloc(strlen(cart.rom_fn) + strlen(ram_ext) + 1);
+	strcpy(fn, cart.rom_fn);
+	strcat(fn, ram_ext);
+	/* check if file is accessible */
+	if (stat(fn, &fstats) != 0)	
+		return 0;
+	/* check if file is the correct size */
+	if (fstats.st_size == cart.ram_size)
+		return 1;
+	else
+		return 0;
+}
+
+static void load_sram() {
+	char *fn;
+	FILE *fp;
+	size_t c;
+	fn = malloc(strlen(cart.rom_fn) + strlen(ram_ext) + 1);
+	strcpy(fn, cart.rom_fn);
+	strcat(fn, ram_ext);
+	fp = fopen(fn, "r");
+	if (fp == NULL) {
+		fprintf(stderr, "could not open sram file for reading: %s\n", fn);
+		perror("fopen");
+		free(fn);
+		return;
+	}
+	printf("loading sram from %s...\n", fn);
+	c = fread(cart.ram, sizeof(Byte), cart.ram_size, fp);
+	if (c != cart.ram_size) {
+		fprintf(stderr, "error: read only %zu of %u bytes from sram file\n", c, cart.ram_size);
+		perror("fread");
+		fclose(fp);
+		free(fn);
+		return;
+	}
+	fclose(fp);
+	free(fn);	
 }
 
