@@ -41,6 +41,7 @@
 #include "timer.h"
 #include "display.h"
 #include "joypad.h"
+#include "sound.h"
 
 #define TIMING_GRANULARITY	50
 #define TIMING_INTERVAL		(1000000000 / TIMING_GRANULARITY)
@@ -61,6 +62,7 @@ int main (int argc, char *argv[]) {
 	load_rom(argv[1]);
 	display_init();
 	joypad_init();
+	sound_init();
 	reset();
 	
 	unsigned int cycles = 0;
@@ -112,8 +114,8 @@ int main (int argc, char *argv[]) {
 		if (delays > delay) {
 			real_time_passed = ((SDL_GetTicks() * 1000000) - real_time);
 			if (core_time > real_time_passed) {
-				if (core_time > real_time_passed + 1 * 1000000)
-					SDL_Delay(1);
+				if (core_time > real_time_passed + 1 * 1000000);
+					//SDL_Delay(1);
 				is_delayed = 1;
 			} else {
 				delay = delays;
@@ -180,4 +182,5 @@ void quit() {
 	unload_rom();
 	display_fini();
 	memory_fini();
+	sound_fini();
 }

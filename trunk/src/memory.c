@@ -31,6 +31,7 @@
 #include "cart.h"
 #include "display.h"
 #include "joypad.h"
+#include "sound.h"
 
 
 #define ADDRESS_SPACE		0x10000
@@ -110,7 +111,14 @@ void writeb(Word address, Byte value) {
             return;
         }
 		himem[address - MEM_IO] = value;
-
+		if ((address >= 0xff10) && (address < 0xff30)) {
+			write_sound(address, value);
+			return;
+		}
+		if ((address >= 0xff30) && (address  <= 0xff3f)) {
+			write_wave(address, value);
+			return;
+		}
 		// If DIV is written to, it is set to 0.
 		if 	(address == HWREG_DIV)
 			himem[address - MEM_IO] = 0;

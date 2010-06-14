@@ -97,6 +97,11 @@ void display_init() {
 
 	display.display = SDL_CreateRGBSurface(SDL_SWSURFACE, 
                                  DISPLAY_W, DISPLAY_H, display.bpp, 0, 0, 0, 0);	
+	if (display.display == NULL) {
+		printf("could not create surface\n");
+		exit(1);
+	}
+
 	display.display = SDL_DisplayFormat(display.display);
 
 	display.video_ram = malloc(sizeof(Byte) * SIZE_VIDEO);

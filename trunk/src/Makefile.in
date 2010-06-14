@@ -50,7 +50,7 @@ am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_gbem_OBJECTS = main.$(OBJEXT) core.$(OBJEXT) memory.$(OBJEXT) \
 	cart.$(OBJEXT) display.$(OBJEXT) joypad.$(OBJEXT) \
-	timer.$(OBJEXT)
+	timer.$(OBJEXT) sound.$(OBJEXT)
 gbem_OBJECTS = $(am_gbem_OBJECTS)
 gbem_DEPENDENCIES =
 gbem_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
@@ -128,6 +128,9 @@ PACKAGE_TARNAME = @PACKAGE_TARNAME@
 PACKAGE_URL = @PACKAGE_URL@
 PACKAGE_VERSION = @PACKAGE_VERSION@
 PATH_SEPARATOR = @PATH_SEPARATOR@
+PKG_CONFIG = @PKG_CONFIG@
+PORTAUDIO_CFLAGS = @PORTAUDIO_CFLAGS@
+PORTAUDIO_LIBS = @PORTAUDIO_LIBS@
 RANLIB = @RANLIB@
 SDL_CFLAGS = @SDL_CFLAGS@
 SDL_CONFIG = @SDL_CONFIG@
@@ -220,7 +223,9 @@ gbem_SOURCES = \
 	joypad.c \
 	joypad.h \
 	timer.c \
-	timer.h
+	timer.h \
+	sound.c \
+	sound.h
 
 gbem_LDFLAGS = -pg
 gbem_LDADD = 
@@ -317,6 +322,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/joypad.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memory.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sound.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/timer.Po@am__quote@
 
 .c.o:

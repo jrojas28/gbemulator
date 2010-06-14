@@ -88,6 +88,7 @@ union UWord {
 #define HWREG_NR10				0xFF10
 #define HWREG_NR11				0xFF11
 #define HWREG_NR12				0xFF12
+#define HWREG_NR13				0xFF13
 #define HWREG_NR14				0xFF14
 #define HWREG_NR21				0xFF16
 #define HWREG_NR22				0xFF17

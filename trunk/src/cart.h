@@ -53,7 +53,7 @@ typedef struct {
 	Byte *rom;
 	Byte *ram;
 	char *rom_title;
-	char *rom_path;
+	char *rom_fn;
 	unsigned int ram_size, rom_size, ram_banks, rom_banks, rom_block;
 	unsigned int rom_bank, ram_bank;
 	unsigned int mbc, mbc_mode;
@@ -66,8 +66,6 @@ typedef struct {
 int load_rom(const char* fn);
 void unload_rom();
 void cart_reset();
-
-// accessors
 void write_rom(Word address, Byte value);
 Byte read_rom(Word address);
 static inline void write_cart_ram(Word address, Byte value);
@@ -85,3 +83,4 @@ static inline Byte read_cart_ram(Word address) {
 
 
 #endif /* _CART_H */
+
