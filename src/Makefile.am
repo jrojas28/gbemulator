@@ -32,7 +32,9 @@ gbem_SOURCES = \
 	timer.c \
 	timer.h \
 	sound.c \
-	sound.h
+	sound.h \
+	debug.c \
+	debug.h
 
 gbem_LDFLAGS = #-pg
 

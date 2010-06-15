@@ -43,32 +43,34 @@ void timer_reset() {
 }
 
 void timer_check(unsigned int period) {
-	tima_time += period;
 	div_time += period;
 	// check if tima timer is enabled
-	if ((tima_time >= get_tima_period()) && ((read_io(HWREG_TAC) & 0x04) != 0)){
-		// increment tima
-		write_io(HWREG_TIMA, read_io(HWREG_TIMA) + 1);
-		// has tima overflowed?
-		if (read_io(HWREG_TIMA) == 0) {
-			// reset tima 
-			write_io(HWREG_TIMA, read_io(HWREG_TMA));
-			// generate timer interrupt
-			write_io(HWREG_IF, read_io(HWREG_IF) | INT_TIMER);
+	if (read_io(HWREG_TAC) & 0x04) {
+		tima_time += period;
+		while (tima_time >= get_tima_period()) {
+			// increment tima
+			write_io(HWREG_TIMA, read_io(HWREG_TIMA) + 1);
+			// has tima overflowed?
+			if (read_io(HWREG_TIMA) == 0) {
+				//printf("overflow: %u: %u\n", get_tima_period(), period);
+				// reset tima 
+				write_io(HWREG_TIMA, read_io(HWREG_TMA));
+				// generate timer interrupt
+				write_io(HWREG_IF, read_io(HWREG_IF) | INT_TIMER);
+			}
+			tima_time -= get_tima_period();
+			//printf("%u\n", tima_time);
 		}
-		tima_time = 0;
 	}
-	if (div_time >= get_div_period())	{
+	
+	while (div_time >= get_div_period())	{
 		write_io(HWREG_DIV, read_io(HWREG_DIV) + 1);
-		div_time = 0;
+		div_time -= get_div_period();
 	}
 }
 
 // This function returns the time between TIMA incrementation.
 static inline unsigned int get_tima_period() {
-	// is the timer stopped? If so, return 0.
-	if ((readb(HWREG_TAC) & 0x04) == 0)
-		return 0;
 	// return the appropriate time
 	return tima_periods[readb(HWREG_TAC) & 0x03];
 }

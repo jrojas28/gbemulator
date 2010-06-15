@@ -42,6 +42,7 @@
 #include "display.h"
 #include "joypad.h"
 #include "sound.h"
+#include "debug.h"
 
 #define TIMING_GRANULARITY	50
 #define TIMING_INTERVAL		(1000000000 / TIMING_GRANULARITY)
@@ -49,6 +50,7 @@
 
 void reset();
 void quit();
+extern int debugging;
 
 int main (int argc, char *argv[]) {
 	printf("%s v%s\n", PACKAGE_NAME, PACKAGE_VERSION);
@@ -63,6 +65,7 @@ int main (int argc, char *argv[]) {
 	display_init();
 	joypad_init();
 	sound_init();
+	debug_init();
 	reset();
 	
 	unsigned int cycles = 0;
@@ -76,9 +79,11 @@ int main (int argc, char *argv[]) {
 	unsigned int delays = 0;
 	unsigned int frame_time = SDL_GetTicks();
 	// main loop
+	// TODO intelligent algorithm for working out number of cycles to execute
+	// based on interrupt predictions...
 	while(1) {
 		if (!is_delayed) {
-			cycles = execute_cycles(MAX_CPU_CYCLES);
+			cycles = execute_cycles(200);
 			core_period = (cycles >> 2) * (1000000000/4194304); // FIXME
 			core_time += core_period;
 			timer_check(core_period);
@@ -152,7 +157,11 @@ int main (int argc, char *argv[]) {
 					exit(0);
 					break;
 				case SDL_KEYDOWN:
-				case SDL_KEYUP:
+					if(event.key.keysym.sym == SDLK_d) {
+						printf("d\n");
+						debugging = ~debugging;
+					}
+					case SDL_KEYUP:
 					if(event.key.keysym.sym == SDLK_ESCAPE) {
 						quit();
 						exit(0);
