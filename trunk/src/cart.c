@@ -116,9 +116,9 @@ int load_rom(const char* fn) {
 	if (cart.rom[CART_COLOR] == 0x80) {
 		cart.is_for_cgb = 1;
 		printf("invalid rom: color gb unimplemented\n");
-		free(cart.rom);
-		free(cart.rom_title);
-		return -1;	
+		//free(cart.rom);
+		//free(cart.rom_title);
+		//return -1;	
 	}
 	else
 		cart.is_for_cgb = 0;

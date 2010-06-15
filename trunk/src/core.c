@@ -34,6 +34,7 @@
 #include <assert.h>
 #include "core.h"
 #include "memory.h"
+#include "debug.h"
 
 /* definitions to keep things tidy */
 #define	REG_A   (core.reg_af.b.h)
@@ -100,6 +101,7 @@ static inline void ret();
 static inline void handle_interrupts();
 
 CoreState core;
+int debugging = 0;
 
 int execute_cycles(int max_cycles) {
 	int cycles = 0;
@@ -121,6 +123,9 @@ int execute_cycles(int max_cycles) {
 		cout << right;
 		cout << endl;
 */
+
+		if (debugging)
+			disasm_instr(REG_PC);
 		// switch opcode
 		switch (readb(REG_PC++)) {
 			/* 8bit loads: imm -> reg */
@@ -485,7 +490,7 @@ int execute_cycles(int max_cycles) {
 				cycles += 12;
 				break;
 			case 0xF9:  /* LD SP, HL */
-				REG_DE = REG_HL;
+				REG_SP = REG_HL;
 				cycles += 8;
 				break;
 			case 0xF8:  /* LDHL SP, n */
@@ -830,7 +835,6 @@ int execute_cycles(int max_cycles) {
 				cycles += 8;
 				break;
 			case 0x3C:	// INC A
-				//REG_A = inc_<Byte,Byte>(REG_A);
 				REG_A = inc_bb(REG_A);
 				cycles += 4;
 				break;
@@ -859,12 +863,10 @@ int execute_cycles(int max_cycles) {
 				cycles += 4;
 				break;
 			case 0x34:	// INC (HL)
-				//writeb(REG_HL, inc_<Byte,Byte>(readb(REG_HL)));
 				writeb(REG_HL, inc_bb(readb(REG_HL)));
 				cycles += 12;
 				break;
 			case 0x3D:	// DEC A
-				//REG_A = dec_<Byte,Byte>(REG_A);
 				REG_A = dec_bb(REG_A);
 				cycles += 4;
 				break;
@@ -913,7 +915,7 @@ int execute_cycles(int max_cycles) {
 				cycles += 8;
 				break;
 			case 0xE8:	// ADD SP, n
-				REG_SP = add_www(REG_SP, readb(REG_PC++));
+				REG_SP = add_wwb(REG_SP, readb(REG_PC++));
 				FLAG_Z = 0;
 				cycles += 16;
 				break;
@@ -1328,13 +1330,8 @@ int execute_cycles(int max_cycles) {
 							}
 						break;
 						}
-						printf("invalid opcode\n");
-/*
-						cout << "invalid opcode: cb" << hex
-							 << (unsigned int) readb(REG_PC - 1)
-							 << "at" << (unsigned int) REG_PC - 2
-							 << "\n" << dec;
-*/
+						printf("invalid opcode: cb%hhx ", readb(REG_PC - 1));
+						printf("at %hx\n", REG_PC - 2);
 						dump_state();
 				}
 				break;
@@ -1602,11 +1599,8 @@ int execute_cycles(int max_cycles) {
 				exit(1);
 #endif
 			default:
-				printf("invalid opcode\n");
-				//				cout << "invalid opcode: " << hex
-//					 << (unsigned int) readb(REG_PC-1)
-//					 << " at " << (unsigned int) REG_PC - 1
-//					 << "\n" << dec;
+				printf("invalid opcode: %hhx ", readb(REG_PC - 1));
+				printf("at %hx\n", REG_PC - 2);
 				dump_state();
 				break;
 		}
@@ -1617,9 +1611,10 @@ int execute_cycles(int max_cycles) {
 			if (core.ei == 1)
 				core.ime = 1;
 		}
-		//cout << "cycles: " << cycles << "\n";
-		//printf("Cycles: %d\n", cycles);
-		//dumpState();
+
+		if (debugging)
+			dump_state();
+		//printf("cyc: %u\n", cycles);
 	}
 	return cycles;
 }
@@ -1677,7 +1672,7 @@ void core_reset() {
 }
 
 void dump_state() {
-	printf("regs: ");
+	printf("\t\tregs: ");
 	printf("A: %02x\t", (unsigned int) REG_A);
 	printf("B: %02x\t", (unsigned int) REG_B);
 	printf("C: %02x\t", (unsigned int) REG_C);
@@ -1688,37 +1683,26 @@ void dump_state() {
 	printf("PC: %04x\t", (unsigned int) REG_PC);
 	printf("SP: %04x\t", (unsigned int) REG_SP);
 	
-	/*
-	cout << "\tregs: " << hex << setfill('0');
-	cout << "	A: " << setw(2) << (unsigned int) REG_A << "	B: " << setw(2) << (unsigned int) REG_B
-	     << "	C: " << setw(2) << (unsigned int) REG_C << "	D: " << setw(2) << (unsigned int) REG_D
-		 << "	E: " << setw(2) << (unsigned int) REG_E << "	H: " << setw(2) << (unsigned int) REG_H
-		 << "	L: " << setw(2) << (unsigned int) REG_L;
-	cout << "	PC: " << setw(4) << (unsigned int) REG_PC << "	SP: "
-		 << setw(4) << (unsigned int) REG_SP << "\t";
-	cout << "set flags: " << setfill(' ');
-*/
-	
 	printf("set flags: ");
 	if (FLAG_Z == 1)
 		printf("Z");
 	else
 		printf(" ");
-	if (FLAG_Z == 1)
+	if (FLAG_N == 1)
 		printf("N");
 	else
 		printf(" ");
-	if (FLAG_Z == 1)
+	if (FLAG_H == 1)
 		printf("H");
 	else
 		printf(" ");
-	if (FLAG_Z == 1)
+	if (FLAG_C == 1)
 		printf("C");
 	else
 		printf(" ");
 
-	//std::cout << "\tIE: " << (unsigned int) mem.readB(HWREG_IE) << "\tIF:" << (unsigned int) mem.readB(HWREG_IF) << "\t IME: " << ime_;
-	printf("\rIE: %04x\tIF: %04x\tIME:%d\n", (unsigned int)readb(HWREG_IE), (unsigned int) readb(HWREG_IF), core.ime);
+	printf("\tIE: %04x\tIF: %04x\tIME:%d\n", (unsigned int)readb(HWREG_IE), (unsigned int) readb(HWREG_IF), core.ime);
+	
 	
 	/*
 	cout << "\tstack:\t";
@@ -1832,11 +1816,6 @@ static inline Word add_www(Word a, Word b) {
 		FLAG_H = 1;
 	else
 		FLAG_H = 0;
-	// if applicable, set zero flag. This is only changed in 8bit adds.
-	if (temp == 0)
-		FLAG_Z = 1;
-	else
-		FLAG_Z = 0;
 	// set subtract flag to 0.
 	FLAG_N = 0;
 	return temp;
@@ -1856,11 +1835,6 @@ static inline Word add_wwb(Word a, Byte b) {
 		FLAG_H = 1;
 	else
 		FLAG_H = 0;
-	// if applicable, set zero flag. This is only changed in 8bit adds.
-	if (temp == 0)
-		FLAG_Z = 1;
-	else
-		FLAG_Z = 0;
 	// set subtract flag to 0.
 	FLAG_N = 0;
 	return temp;
@@ -2056,36 +2030,29 @@ static inline Word pop() {
 	return readw(REG_SP - 2);
 }
 
+// busted...
 static inline Byte daa(Byte a) {
-	Byte temp = a;
+	Word temp = a;
 	int set_carry = 0;
-	if (FLAG_N == 1) {
-		if ((FLAG_H == 1) || ((a & 0x0f) > 9)) {
-			temp -= 0x06;
-		}
-		if ((FLAG_C == 1) || (a > 0x99)) {
+	if (FLAG_N) {
+		if (FLAG_H)
+			temp = (temp - 0x06) & 0xff;
+		if (FLAG_C)
 			temp -= 0x60;
-			set_carry = 1;
-		}
 	} else {
-		if ((FLAG_H == 1) || ((a & 0x0f) > 9)) {
+		if (FLAG_H || ((a & 0x0f) > 9))
 			temp += 0x06;
-		}
-		if ((FLAG_C == 1) || (a > 0x99)) {
+		if (FLAG_C || (a > 0x9f))
 			temp += 0x60;
-			set_carry = 1;
-		}
 	}
-	if (set_carry)
+	if (temp & 0x100)
 		FLAG_C = 1;
-	else
-		FLAG_C = 0;
 	FLAG_H = 0;
+	temp &= 0xff;
 	if (temp == 0)
 		FLAG_Z = 1;
 	else
 		FLAG_Z = 0;
-
 	return temp;
 }
 
