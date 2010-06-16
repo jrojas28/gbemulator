@@ -324,7 +324,6 @@ int load_rom(const char* fn) {
 		} else {
 			printf("could not find sram file\n");
 		}
-					
 	}
 	return 0;
 	
@@ -373,11 +372,11 @@ static void set_switchable_rom() {
 
 static void set_switchable_ram() {
 	//mem.setExtRamSw(ram_ + (cart.ram_bank * 0x4000));
-	set_vector_block(MEM_RAM_BANK_SW, cart.ram + (cart.ram_bank * 0x4000), 
+	set_vector_block(MEM_RAM_BANK_SW, cart.ram + (cart.ram_bank * 0x2000), 
 						SIZE_RAM_BANK_SW);
 }
 
-// TODO checks for bad bank selection - this could potentially cause buffer
+// TODO checks for bad bank selection? - this could potentially cause buffer
 // overflows.
 void write_rom(Word address, Byte value) {
 	if (cart.mbc == 1) {
