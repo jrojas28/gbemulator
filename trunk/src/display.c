@@ -205,7 +205,7 @@ void display_reset() {
 
 void display_update(unsigned int cycles) {
 	Byte ly, stat, lcdc;
-	cycles = cycles >> 2;
+	//cycles = cycles >> 2;
 	display.cycles += cycles;
 	ly = read_io(HWREG_LY);
 	stat = read_io(HWREG_STAT);

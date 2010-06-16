@@ -24,6 +24,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+
 #include "timer.h"
 #include "memory.h"
 #include "core.h"
@@ -31,11 +32,15 @@
 static unsigned int tima_time;
 static unsigned int div_time;
 
-static const unsigned int tima_periods[] = {1000000000/4096, 1000000000/262144, 
-	                                        1000000000/65536, 1000000000/16384};
+//static const unsigned int tima_periods[] = {1000000000/4096, 1000000000/262144, 
+	                                        //1000000000/65536, 1000000000/16384};
+
+
+// periods for each tima setting, in machine cycles
+static const unsigned int tima_periods[] = {1024, 16, 64, 256};
+
 static inline unsigned int get_tima_period();
 static inline unsigned int get_div_period();
-
 
 void timer_reset() {
 	tima_time = 0;
@@ -52,15 +57,15 @@ void timer_check(unsigned int period) {
 			write_io(HWREG_TIMA, read_io(HWREG_TIMA) + 1);
 			// has tima overflowed?
 			if (read_io(HWREG_TIMA) == 0) {
-				//printf("overflow: %u: %u\n", get_tima_period(), period);
 				// reset tima 
 				write_io(HWREG_TIMA, read_io(HWREG_TMA));
 				// generate timer interrupt
 				write_io(HWREG_IF, read_io(HWREG_IF) | INT_TIMER);
 			}
 			tima_time -= get_tima_period();
-			//printf("%u\n", tima_time);
 		}
+	} else {
+		tima_time = 0;
 	}
 	
 	while (div_time >= get_div_period())	{
@@ -76,6 +81,6 @@ static inline unsigned int get_tima_period() {
 }
 
 static inline unsigned int get_div_period() {
-	return 1000000000/16384;
+	return 64;
 }
 

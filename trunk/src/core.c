@@ -151,7 +151,7 @@ int execute_cycles(int max_cycles) {
 				break;
 			case 0x2E:  /* LD L, n */
 				REG_L = readb(REG_PC++);
-				cycles += 8;	
+				cycles += 8;
 				break;
 			/* 8bit loads: reg -> reg */
 			case 0x7F:  /* LD A, A */
@@ -495,8 +495,6 @@ int execute_cycles(int max_cycles) {
 				break;
 			case 0xF8:  /* LDHL SP, n */
 				REG_HL = add_wwb(REG_SP, readb(REG_PC++));
-				FLAG_Z = 0;
-				FLAG_N = 0;
 				cycles += 12;
 				break;
 			case 0x08: // LD (nn), SP
@@ -916,7 +914,6 @@ int execute_cycles(int max_cycles) {
 				break;
 			case 0xE8:	// ADD SP, n
 				REG_SP = add_wwb(REG_SP, readb(REG_PC++));
-				FLAG_Z = 0;
 				cycles += 16;
 				break;
 			case 0x03:	// INC BC
@@ -1241,7 +1238,7 @@ int execute_cycles(int max_cycles) {
 									break;
 								case 0x06:	// BIT b, (HL)
 									bit(readb(REG_HL), b);
-									cycles += 16;
+									cycles += 12;
 									break;
 								case 0x07:	// BIT b, A
 									bit(REG_A, b);
@@ -1439,9 +1436,9 @@ int execute_cycles(int max_cycles) {
    				REG_PC += 2;
 				cycles += 12;
 				break;
-			case 0xE9:   // JP (HL)
-				REG_PC = REG_HL;	// This may look wrong, but its not.
-				cycles += 8;
+			case 0xE9:   // JP HL
+				REG_PC = REG_HL;
+				cycles += 4;
 				break;
 			case 0x18:   // JR n
 				jr(readb(REG_PC));
@@ -1482,104 +1479,112 @@ int execute_cycles(int max_cycles) {
 				break;
 			case 0xCD:	// CALL nn
 				call(readw(REG_PC));
-				cycles += 12;
+				cycles += 24;
 				break;
 			case 0xC4:	// CALL NZ, nn
-				cycles += 12;
 				if (FLAG_Z == 0) {
 					call(readw(REG_PC));
+					cycles += 24;
 					break;
 				}
+				cycles += 12;
 				REG_PC += 2;
 				break;
 			case 0xCC:	// CALL Z, nn
-				cycles += 12;
 				if (FLAG_Z != 0) {
 					call(readw(REG_PC));
+					cycles += 24;
 					break;
 				}
+				cycles += 12;
 				REG_PC += 2;
 				break;
 			case 0xD4:	// CALL NC, nn
-				cycles += 12;
 				if (FLAG_C == 0) {
 					call(readw(REG_PC));
+					cycles += 24;
 					break;
 				}
+				cycles += 12;
 				REG_PC += 2;
 				break;
 			case 0xDC:	// CALL C, nn
-				cycles += 12;
 				if (FLAG_C != 0) {
 					call(readw(REG_PC));
+					cycles += 24;
 					break;
 				}
+				cycles += 12;
 				REG_PC += 2;
 				break;
 			case 0xC7:	// RST 0x00
 				rst(0x00);
-				cycles += 32;
+				cycles += 16;
 				break;
 			case 0xCF:	// RST 0x08
 				rst(0x08);
-				cycles += 32;
+				cycles += 16;
 				break;
 			case 0xD7:	// RST 0x10
 				rst(0x10);
-				cycles += 32;
+				cycles += 16;
 				break;
 			case 0xDF:	// RST 0x18
 				rst(0x18);
-				cycles += 32;
+				cycles += 16;
 				break;
 			case 0xE7:	// RST 0x20
 				rst(0x20);
-				cycles += 32;
+				cycles += 16;
 				break;
 			case 0xEF:	// RST 0x28
 				rst(0x28);
-				cycles += 32;
+				cycles += 16;
 				break;
 			case 0xF7:	// RST 0x30
 				rst(0x30);
-				cycles += 32;
+				cycles += 16;
 				break;
 			case 0xFF:	// RST 0x38
 				rst(0x38);
-				cycles += 32;
+				cycles += 16;
 				break;
 			case 0xC9:	// RET
 				ret();
-				cycles += 8;
+				cycles += 16;
 				break;
 			case 0xC0:	// RET NZ
 				if (FLAG_Z == 0) {
 					ret();
+					cycles += 12;
 				}
 				cycles += 8;
 				break;
 			case 0xC8:	// RET Z
 				if (FLAG_Z != 0) {
 					ret();
+					cycles += 12;
 				}
 				cycles += 8;
 				break;
 			case 0xD0:	// RET NC
 				if (FLAG_C == 0) {
 					ret();
+					cycles += 12;
 				}
 				cycles += 8;
 				break;
 			case 0xD8:	// RET C
 				if (FLAG_C != 0) {
 					ret();
+					cycles += 12;
 				}
 				cycles += 8;
 				break;
 			case 0xD9:	// RETI
 				ret();
 				core.ime = 1;
-				cycles += 8;
+				cycles += 16;
 				break;
 			case 0x00:  // NOP
 				cycles += 4;
@@ -1784,7 +1789,6 @@ static inline void handle_interrupts() {
 }
 
 
-
 // ADD
 static inline Byte add_bbb(Byte a, Byte b) {
 	Byte temp = a + b;
@@ -1830,17 +1834,18 @@ static inline Word add_wwb(Word a, Byte b) {
 	SWord bsx = (SWord)((SByte)b);
 	Word temp = a + (Word)bsx;
 	// will it overflow? If so, set carry flag.
-	if (0xFFFF - a < (Word)bsx)
+	if (0xFF - (a & 0x00ff) < b)
 		FLAG_C = 1;
 	else
 		FLAG_C = 0;
 	// will the lower nibble overflow? If so, set half carry flag.
-	if (0x0FFF - (a & 0x0FFF) < ((Word)(bsx) & 0x0FFF))
+	if (0x0F - (a & 0x0F) < (b & 0x0F))
 		FLAG_H = 1;
 	else
 		FLAG_H = 0;
 	// set subtract flag to 0.
 	FLAG_N = 0;
+	FLAG_Z = 0;
 	return temp;
 }
 

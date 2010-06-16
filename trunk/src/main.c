@@ -68,6 +68,7 @@ int main (int argc, char *argv[]) {
 	debug_init();
 	reset();
 	
+	unsigned int is_paused = 0;
 	unsigned int cycles = 0;
 	unsigned int core_period;				// in nanoseconds
 	SDL_Event event;
@@ -82,38 +83,14 @@ int main (int argc, char *argv[]) {
 	// TODO intelligent algorithm for working out number of cycles to execute
 	// based on interrupt predictions...
 	while(1) {
-		if (!is_delayed) {
-			cycles = execute_cycles(200);
-			core_period = (cycles >> 2) * (1000000000/4194304); // FIXME
+		if ((!is_delayed) && (!is_paused)) {
+			cycles = execute_cycles(1);
+			//core_period = cycles * (1000000000/4194304); // FIXME
+			core_period = (cycles >> 2) * (1000000000/1048576); // FIXME
 			core_time += core_period;
-			timer_check(core_period);
+			timer_check(cycles);
 			display_update(cycles);
 		}
-		
-		// 50 FPS
-		if ((SDL_GetTicks() - frame_time) >= 20) {
-				//draw_frame();
-			frame_time = SDL_GetTicks();
-		}
-
-/*
-		delays = core_time / TIMING_INTERVAL;
-		if (delays > delay) {
-			real_time_passed = ((SDL_GetTicks() * 1000000) - real_time);
-			if (core_time > real_time_passed) {
-				is_delayed = 1;
-			} else {
-				delay = delays;
-				is_delayed = 0;	
-			}
-			if (delay >= TIMING_GRANULARITY) {
-				delay = 1;
-				core_time = 0;
-				real_time = SDL_GetTicks() * 1000000;
-			}
-		}
-*/
-
 
 		delays = core_time / TIMING_INTERVAL;
 		if (delays > delay) {
@@ -133,23 +110,6 @@ int main (int argc, char *argv[]) {
 			}
 		}
 
-
-/*
-		// this part of the loop is slow, so we dont do it every time
-		if ((core_time / 20000000) == delay) {
-			real_time_passed = ((SDL_GetTicks() * 1000000) - real_time);
-			printf("%u\n", ((core_time - real_time_passed) / 1000000) * 5);
-			if (core_time > real_time_passed) {
-				SDL_Delay((core_time - real_time_passed) / 1000000);
-			}
-			++delay;
-			if (delay == 51) {
-				delay = 1;
-				core_time = 0;
-				real_time = SDL_GetTicks() * 1000000;
-			}
-		}
-*/
 		while (SDL_PollEvent(&event)) {
 			switch (event.type) {
 				case SDL_QUIT:
@@ -161,7 +121,13 @@ int main (int argc, char *argv[]) {
 						printf("d\n");
 						debugging = ~debugging;
 					}
-					case SDL_KEYUP:
+					if(event.key.keysym.sym == SDLK_p) {
+						printf("Emulation Paused\n");
+						is_paused = ~is_paused;
+					}
+
+				
+				case SDL_KEYUP:
 					if(event.key.keysym.sym == SDLK_ESCAPE) {
 						quit();
 						exit(0);
