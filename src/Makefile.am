@@ -11,8 +11,8 @@ AM_CFLAGS =\
 	 -Wall\
 	 -pedantic\
 	 -g\
-	 -std=c99
-#	 -pg
+	 -std=c99\
+	 -pg
 
 bin_PROGRAMS = gbem
 
@@ -36,6 +36,6 @@ gbem_SOURCES = \
 	debug.c \
 	debug.h
 
-gbem_LDFLAGS = #-pg
+gbem_LDFLAGS = -pg
 
 gbem_LDADD = 
