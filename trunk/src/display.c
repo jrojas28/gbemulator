@@ -205,8 +205,10 @@ void display_reset() {
 
 void display_update(unsigned int cycles) {
 	Byte ly, stat, lcdc;
-	//cycles = cycles >> 2;
 	display.cycles += cycles;
+	static unsigned int frames = 0;
+	static unsigned int ticks = 0;
+	static unsigned int old_ticks = 0;
 	ly = read_io(HWREG_LY);
 	stat = read_io(HWREG_STAT);
 	lcdc = read_io(HWREG_LCDC);
@@ -265,6 +267,14 @@ void display_update(unsigned int cycles) {
 		if (ly == 154) {
 			// vblank has just finished
 			ly = 0;
+#if 0
+			++frames;
+			if (SDL_GetTicks() - ticks >= 1000) {
+				printf("fps: %u\n", frames);
+				frames = 0;
+				ticks = SDL_GetTicks();
+			}
+#endif
 			draw_frame();
 			if (ly == readb(HWREG_LYC)) {
 				if (!(stat & STAT_FLAG_COINCIDENCE) 

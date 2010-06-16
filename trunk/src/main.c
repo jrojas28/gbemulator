@@ -84,7 +84,7 @@ int main (int argc, char *argv[]) {
 	// based on interrupt predictions...
 	while(1) {
 		if ((!is_delayed) && (!is_paused)) {
-			cycles = execute_cycles(1);
+			cycles = execute_cycles(200);
 			//core_period = cycles * (1000000000/4194304); // FIXME
 			core_period = (cycles >> 2) * (1000000000/1048576); // FIXME
 			core_time += core_period;
@@ -96,8 +96,8 @@ int main (int argc, char *argv[]) {
 		if (delays > delay) {
 			real_time_passed = ((SDL_GetTicks() * 1000000) - real_time);
 			if (core_time > real_time_passed) {
-				if (core_time > real_time_passed + 1 * 1000000);
-					//SDL_Delay(1);
+				if (core_time > real_time_passed + (2 * 1000000));
+					SDL_Delay(1);
 				is_delayed = 1;
 			} else {
 				delay = delays;

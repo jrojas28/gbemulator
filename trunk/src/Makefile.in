@@ -206,7 +206,8 @@ AM_CFLAGS = \
 	 -Wall\
 	 -pedantic\
 	 -g\
-	 -std=c99
+	 -std=c99\
+	 -pg
 
 gbem_SOURCES = \
 	main.c\
@@ -228,7 +229,7 @@ gbem_SOURCES = \
 	debug.c \
 	debug.h
 
-gbem_LDFLAGS = #-pg
+gbem_LDFLAGS = -pg
 gbem_LDADD = 
 all: all-am
 
