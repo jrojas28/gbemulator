@@ -1381,18 +1381,22 @@ int execute_cycles(int max_cycles) {
 				break;
 			case 0x07:	// RLCA
 				REG_A = rlc(REG_A);
+				FLAG_Z = 0;
 				cycles += 4;
 				break;
 			case 0x17:	// RLA
 				REG_A = rl(REG_A);
+				FLAG_Z = 0;
 				cycles += 4;
 				break;
 			case 0x0F:	// RRCA
-				REG_A = rl(REG_A);
+				REG_A = rrc(REG_A);
+				FLAG_Z = 0;
 				cycles += 4;
 				break;
 			case 0x1F:	// RRA
 				REG_A = rr(REG_A);
+				FLAG_Z = 0;
 				cycles += 4;
 				break;
 			case 0xC3:   // JP imm
@@ -1824,8 +1828,8 @@ static inline Word add_www(Word a, Word b) {
 static inline Word add_wwb(Word a, Byte b) {
 	// we must get the C compiler to sign extend b.
 	SWord bsx = (SWord)((SByte)b);
-	SWord temp = a + bsx;
-	// will the it overflow? If so, set carry flag.
+	Word temp = a + (Word)bsx;
+	// will it overflow? If so, set carry flag.
 	if (0xFFFF - a < (Word)bsx)
 		FLAG_C = 1;
 	else
@@ -1840,28 +1844,49 @@ static inline Word add_wwb(Word a, Byte b) {
 	return temp;
 }
 
+/* for this, we check for carry and half carry after each of the two add
+ * operations
+ */
 static inline Byte adc(Byte a, Byte b) {
-	Byte temp;
-	temp = a + b + FLAG_C;
-	// will it overflow? If so, set carry flag.
-	if (0xFF - a < b + FLAG_C)
-		FLAG_C = 1;
-	else if (0xFF - a > b + FLAG_C)
-		FLAG_C = 0;
+	Byte temp, temp2;
+	unsigned carry_set = 0;
+	unsigned half_set = 0;
+	
+	temp = a + FLAG_C;
 
 	// will the lower nibble overflow? If so, set half carry flag.
-	if (0x0F - (a & 0x0F) < ((b + FLAG_C) & 0x0F))
+	if (0x0F - (a & 0x0F) < (FLAG_C & 0x0F))
+		half_set = 1;
+	// will it overflow? If so, set carry flag.
+	if (0xFF - a < FLAG_C)
+		carry_set = 1;
+
+	temp2 = temp + b;
+	// will the lower nibble overflow? If so, set half carry flag.
+	if (0x0F - (temp & 0x0F) < (b & 0x0F))
+		half_set = 1;
+	// will it overflow? If so, set carry flag.
+	if (0xFF - temp < b)
+		carry_set = 1;	
+
+	if (half_set)
 		FLAG_H = 1;
-	else if (0x0F - (a & 0x0F) > ((b + FLAG_C) & 0x0F))
+	else
 		FLAG_H = 0;
+		
+	if (carry_set)
+		FLAG_C = 1;
+	else
+		FLAG_C = 0;
+		
 	// if applicable, set zero flag.
-	if (temp == 0)
+	if (temp2 == 0)
 		FLAG_Z = 1;
 	else
 		FLAG_Z = 0;
 	// set subtract flag to 0.
 	FLAG_N = 0;
-	return temp;
+	return temp2;
 }
 
 
@@ -1889,26 +1914,46 @@ static inline Byte sub(Byte a, Byte b) {
 }
 
 static inline Byte sbc(Byte a, Byte b) {
-	Byte temp;
-	temp = a - (b + FLAG_C);
+	Byte temp, temp2;
+	unsigned carry_set = 0;
+	unsigned half_set = 0;
+	
+	temp = a - FLAG_C;
+	
 	// will there be a borrow? if so, no carry
-	if (a < b + FLAG_C)
-		FLAG_C = 1;
-	else
-		FLAG_C = 0;
+	if (a < FLAG_C)
+		carry_set = 1;
 	// will the lower nibble borrow? if so, no carry
-	if ((a & 0x0F) < ((b + FLAG_C) & 0x0F))
+	if ((a & 0x0F) < (FLAG_C & 0x0F))
+		half_set = 1;
+
+	temp2 = temp - b;
+	
+	// will there be a borrow? if so, no carry
+	if (temp < b)
+		carry_set = 1;
+	// will the lower nibble borrow? if so, no carry
+	if ((temp & 0x0F) < (b & 0x0F))
+		half_set = 1;
+
+	if (half_set)
 		FLAG_H = 1;
 	else
 		FLAG_H = 0;
+		
+	if (carry_set)
+		FLAG_C = 1;
+	else
+		FLAG_C = 0;
+
 	// if applicable, set zero flag.
-	if (temp == 0)
+	if (temp2 == 0)
 		FLAG_Z = 1;
 	else
 		FLAG_Z = 0;
 	// set subtract flag to 1.
 	FLAG_N = 1;
-	return temp;
+	return temp2;
 }
 
 static inline Byte inc_bb(Byte a) {
