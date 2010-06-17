@@ -52,9 +52,9 @@ void memory_init() {
 }
 
 void memory_reset() {
-	bzero(vector_table, VT_SIZE);
-	bzero(internal0, SIZE_INTERNAL_0);
-	bzero(himem, SIZE_HIMEM);
+	memset(vector_table, 0, VT_SIZE);
+	memset(internal0, 0, SIZE_INTERNAL_0);
+	memset(himem, 0, SIZE_HIMEM);
 
 	set_vector_block(MEM_INTERNAL_0, internal0, SIZE_INTERNAL_0);
 	set_vector_block(MEM_INTERNAL_ECHO, internal0, SIZE_INTERNAL_ECHO);
