@@ -72,7 +72,7 @@ int main (int argc, char *argv[]) {
 	unsigned int cycles = 0;
 	unsigned int core_period;				// in nanoseconds
 	SDL_Event event;
-	unsigned int core_time = 0;				
+	unsigned int core_time = 0;
 	unsigned int delay = 1;
 	int is_delayed = 0;
 	unsigned int real_time = SDL_GetTicks() * 1000000;
@@ -125,7 +125,10 @@ int main (int argc, char *argv[]) {
 						printf("Emulation Paused\n");
 						is_paused = ~is_paused;
 					}
-
+					if(event.key.keysym.sym == SDLK_r) {
+						printf("Reset\n");
+						reset();
+					}
 				
 				case SDL_KEYUP:
 					if(event.key.keysym.sym == SDLK_ESCAPE) {

@@ -200,6 +200,8 @@ void display_reset() {
 
 	display.sprite_height = 8;
 	display.cycles = 0;	
+	SDL_FillRect(display.display, NULL, SDL_MapRGB(display.display->format, 0xff, 0xff, 0xff));
+	SDL_FillRect(display.screen, NULL, SDL_MapRGB(display.screen->format, 0xff, 0xff, 0xff));
 }
 
 
@@ -245,7 +247,7 @@ void display_update(unsigned int cycles) {
 			stat = (stat & (~STAT_MODES)) | STAT_MODE_HBLANK;
 		} else {
 			display.cycles -= (80 + 172 + 204);
-		    if (lcdc & 0x01)
+			if (lcdc & 0x01)
 			    draw_background(lcdc, ly);
 		    if (lcdc & 0x20)
 			    draw_window(lcdc, ly);
