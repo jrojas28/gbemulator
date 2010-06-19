@@ -43,6 +43,7 @@
 #include "joypad.h"
 #include "sound.h"
 #include "debug.h"
+#include "save.h"
 
 #define TIMING_GRANULARITY	50
 #define TIMING_INTERVAL		(1000000000 / TIMING_GRANULARITY)
@@ -58,7 +59,6 @@ int main (int argc, char *argv[]) {
 		printf("Invalid arguments\n");
 		return 1;
 	}
-	//Debugger debugger(&core);
 
 	memory_init();
 	load_rom(argv[1]);
@@ -85,7 +85,6 @@ int main (int argc, char *argv[]) {
 	while(1) {
 		if ((!is_delayed) && (!is_paused)) {
 			cycles = execute_cycles(200);
-			//core_period = cycles * (1000000000/4194304); // FIXME
 			core_period = (cycles >> 2) * (1000000000/1048576); // FIXME
 			core_time += core_period;
 			timer_check(cycles);
@@ -97,7 +96,7 @@ int main (int argc, char *argv[]) {
 			real_time_passed = ((SDL_GetTicks() * 1000000) - real_time);
 			if (core_time > real_time_passed) {
 				if (core_time > real_time_passed + (2 * 1000000));
-					SDL_Delay(1);
+					//SDL_Delay(1);
 				is_delayed = 1;
 			} else {
 				delay = delays;
@@ -122,14 +121,23 @@ int main (int argc, char *argv[]) {
 						debugging = ~debugging;
 					}
 					if(event.key.keysym.sym == SDLK_p) {
-						printf("Emulation Paused\n");
+						printf("emulation paused\n");
 						is_paused = ~is_paused;
+						if (is_paused)
+							stop_sound();
+						else
+							start_sound();
 					}
 					if(event.key.keysym.sym == SDLK_r) {
-						printf("Reset\n");
+						printf("reset\n");
 						reset();
 					}
-				
+					if(event.key.keysym.sym == SDLK_F1) {
+						save_state();
+					}
+					if(event.key.keysym.sym == SDLK_F2) {
+						load_state();
+					}
 				case SDL_KEYUP:
 					if(event.key.keysym.sym == SDLK_ESCAPE) {
 						quit();

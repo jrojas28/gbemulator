@@ -58,4 +58,6 @@ typedef struct {
 int execute_cycles(int max_cycles);
 void core_reset();
 void dump_state();
+void core_save();
+void core_load();
 

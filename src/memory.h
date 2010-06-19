@@ -35,6 +35,8 @@
 void memory_reset();
 void memory_init();
 void memory_fini();
+void memory_save();
+void memory_load();
 
 static inline Byte readb(Word address);
 void writeb(Word address, Byte value);

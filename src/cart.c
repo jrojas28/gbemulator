@@ -31,6 +31,7 @@
 #include <assert.h>
 #include "cart.h"
 #include "memory.h"
+#include "save.h"
 
 static void set_switchable_rom();
 static void set_switchable_ram();
@@ -38,7 +39,7 @@ static void save_sram();
 static int find_sram_file();
 static void load_sram();
 
-char ram_ext[] = ".sav";
+static const char ram_ext[] = ".sav";
 
 Cart cart;
 
@@ -460,7 +461,6 @@ void write_rom(Word address, Byte value) {
 		}
 	}
 	printf("invalid write to rom\n");
-	//std::cout << "invalid write to rom" << std::endl;
 }
 
 Byte read_rom(Word address) {
@@ -502,7 +502,7 @@ static void save_sram() {
 	c = fwrite(cart.ram, sizeof(Byte), cart.ram_size, fp);
 	if (c < cart.ram_size) {
 		fprintf(stderr, "error: wrote only %zu of %u bytes to sram file\n", c, cart.ram_size);
-		perror("fopen");
+		perror("fwrite");
 		fclose(fp);
 		free(fn);
 		return;
@@ -557,3 +557,22 @@ static void load_sram() {
 	free(fn);	
 }
 
+void cart_save() {
+	if (cart.ram_size > 0)
+		save_memory("cram", cart.ram, cart.ram_size);
+	save_uint("rom_bank", cart.rom_bank);
+	save_uint("rom_block", cart.rom_block);
+	save_uint("ram_bank", cart.ram_bank);
+	save_uint("mbc_mode", cart.mbc_mode);
+}
+
+void cart_load() {
+	if (cart.ram_size > 0)
+		load_memory("cram", cart.ram, cart.ram_size);
+	cart.rom_bank = load_uint("rom_bank");
+	cart.rom_block = load_uint("rom_block");
+	cart.ram_bank = load_uint("ram_bank");
+	cart.mbc_mode = load_uint("mbc_mode");
+	set_switchable_rom();
+	set_switchable_ram();
+}

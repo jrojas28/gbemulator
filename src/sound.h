@@ -44,7 +44,7 @@ typedef struct {
 	unsigned int number;
 	unsigned int time;
 	signed int shadow;
-	float sign;
+	signed int sign;
 	unsigned int i, j;
 } Sweep;
 
@@ -124,7 +124,10 @@ void sound_init();
 void sound_fini();
 void write_sound(Word address, Byte value);
 void write_wave(Word address, Byte value);
-
+void stop_sound();
+void start_sound();
+void sound_save();
+void sound_load();
 
 #endif /* _SOUND_H */
 

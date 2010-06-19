@@ -35,6 +35,7 @@
 #include "core.h"
 #include "memory.h"
 #include "debug.h"
+#include "save.h"
 
 /* definitions to keep things tidy */
 #define	REG_A   (core.reg_af.b.h)
@@ -1623,7 +1624,6 @@ int execute_cycles(int max_cycles) {
 
 		if (debugging)
 			dump_state();
-		//printf("cyc: %u\n", cycles);
 	}
 	return cycles;
 }
@@ -2239,4 +2239,47 @@ static inline void rst(Byte a) {
 static inline void ret() {
 	REG_PC = pop();
 }
+
+void core_save() {
+	save_byte("reg_a", core.reg_af.b.h);
+	save_byte("reg_f", core.reg_af.b.l);
+	save_byte("reg_b", core.reg_bc.b.h);
+	save_byte("reg_c", core.reg_bc.b.l);
+	save_byte("reg_d", core.reg_de.b.h);
+	save_byte("reg_e", core.reg_de.b.l);
+	save_byte("reg_h", core.reg_hl.b.h);
+	save_byte("reg_l", core.reg_hl.b.l);
+	save_word("reg_sp", core.reg_sp);
+	save_word("reg_pc", core.reg_pc);
+	save_int("flag_z", core.flag_z);
+	save_int("flag_n", core.flag_n);
+	save_int("flag_h", core.flag_h);
+	save_int("flag_c", core.flag_c);
+	save_int("ei", core.ei);
+	save_int("is_halted", core.is_halted);
+	save_int("is_stopped", core.is_stopped);
+	save_int("ime", core.ime);
+}
+
+void core_load() {
+	core.reg_af.b.h = load_byte("reg_a");
+	core.reg_af.b.l = load_byte("reg_f");
+	core.reg_bc.b.h = load_byte("reg_b");
+	core.reg_bc.b.l = load_byte("reg_c");
+	core.reg_de.b.h = load_byte("reg_d");
+	core.reg_de.b.l = load_byte("reg_e");
+	core.reg_hl.b.h = load_byte("reg_h");
+	core.reg_hl.b.l = load_byte("reg_l");
+	core.reg_sp = load_word("reg_sp");
+	core.reg_pc = load_word("reg_pc");
+	core.flag_z = load_int("flag_z");
+	core.flag_n = load_int("flag_n");
+	core.flag_h = load_int("flag_h");	
+	core.flag_c = load_int("flag_c");
+	core.ei = load_int("ei");
+	core.is_halted = load_int("is_halted");
+	core.is_stopped = load_int("is_stopped");
+	core.ime = load_int("ime");
+}
+
 

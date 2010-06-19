@@ -34,7 +34,9 @@ gbem_SOURCES = \
 	sound.c \
 	sound.h \
 	debug.c \
-	debug.h
+	debug.h \
+	save.c \
+	save.h
 
 gbem_LDFLAGS = -pg
 
