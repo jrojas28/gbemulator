@@ -32,7 +32,7 @@
 #include "display.h"
 #include "joypad.h"
 #include "sound.h"
-
+#include "save.h"
 
 #define ADDRESS_SPACE		0x10000
 #define VT_ENTRIES 			(ADDRESS_SPACE / VT_GRANULARITY)
@@ -146,3 +146,19 @@ void writeb(Word address, Byte value) {
 		return;
 	}
 }
+
+void memory_save() {
+	save_memory("iram", internal0, SIZE_INTERNAL_0);
+	save_memory("himem", himem, SIZE_HIMEM);
+}
+
+void memory_load() {
+	load_memory("iram", internal0, SIZE_INTERNAL_0);
+	load_memory("himem", himem, SIZE_HIMEM);
+
+	set_vector_block(MEM_INTERNAL_0, internal0, SIZE_INTERNAL_0);
+	set_vector_block(MEM_INTERNAL_ECHO, internal0, SIZE_INTERNAL_ECHO);
+	set_vector_block(MEM_IO, himem, SIZE_HIMEM);
+}
+
+

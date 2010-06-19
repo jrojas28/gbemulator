@@ -41,6 +41,7 @@
 #include <string.h>
 #include "sound.h"
 #include "memory.h"
+#include "save.h"
 
 static char *lfsr_7;
 static char *lfsr_15;
@@ -138,13 +139,15 @@ void sound_init() {
 	sound.channel_2.is_on = 0;
 	sound.channel_3.is_on = 0;
 	sound.channel_4.is_on = 0;
-
+	sound.is_on = 0;
+	
 	err = Pa_StartStream(stream);
     if (err != paNoError) {
 		Pa_Terminate();
 		fprintf(stderr, "could not start output stream: %s\n", Pa_GetErrorText(err));
 		exit(1);
 	}
+	
 }
 
 void sound_fini() {
@@ -158,10 +161,30 @@ void sound_fini() {
 	free(lfsr_15);
 }
 
+void stop_sound() {
+	PaError err;
+	assert(sound.is_on);
+	err = Pa_StopStream(stream);	
+	sound.is_on = 0;
+}
+
+void start_sound() {
+	PaError err;
+	assert(!sound.is_on);
+	err = Pa_StartStream(stream);
+    if (err != paNoError) {
+		Pa_Terminate();
+		fprintf(stderr, "could not start output stream: %s\n", Pa_GetErrorText(err));
+		exit(1);
+	}
+	sound.is_on = 1;
+}
+
 // fill with sensible defaults...
 void sound_reset() {
 	sound.volume_left = 7;
 	sound.volume_right = 7;
+	sound.is_on = 1;
 	sound.channel_1.is_on = 0;
 	sound.channel_2.is_on = 0;
 	sound.channel_3.is_on = 0;
@@ -436,7 +459,6 @@ static int call_back(const void *input_buffer, void *output_buffer,
 		 	right[j] = GROUND;
 		 }
 		
-		if (data->is_on) {
 		// Channel 1 ===========================================================
 		if (data->channel_1.is_on) {
 			// generate square wave
@@ -622,8 +644,8 @@ static int call_back(const void *input_buffer, void *output_buffer,
 					++data->channel_4.envelope.j;
 				}
 			}
-			}
 		}
+
 
 		// reduce volume of all channels before mixing to prevent overflow
 		//for (j = 0; j < CHANNELS; j++) {
@@ -648,6 +670,30 @@ static int call_back(const void *input_buffer, void *output_buffer,
     return paContinue;
 }
 
+void sound_save() {
+	save_uint("channel_1.length", sound.channel_1.length);
+	save_uint("channel_1.period", sound.channel_1.period);
+	save_int("channel_1.gb_frequency", sound.channel_1.gb_frequency);
+	save_uint("channel_1.i", sound.channel_1.i);
+	
+	save_uint("channel_1.length", sound.channel_1.length);
+	save_uint("channel_1.sweep.number", sound.channel_1.sweep.number);
+	save_uint("channel_1.sweep.time", sound.channel_1.sweep.time);
+	save_int("channel_1.sweep.shadow", sound.channel_1.sweep.shadow);
+	save_uint("channel_1.sweep.i", sound.channel_1.sweep.i);
+	save_uint("channel_1.sweep.j", sound.channel_1.sweep.j);
+	
+	
+}
 
+void sound_load() {
+	save_uint("channel_1.sweep.number", sound.channel_1.sweep.number);
+	save_uint("channel_1.sweep.time", sound.channel_1.sweep.time);
+	save_int("channel_1.sweep.shadow", sound.channel_1.sweep.shadow);
+	save_uint("channel_1.sweep.i", sound.channel_1.sweep.i);
+	save_uint("channel_1.sweep.j", sound.channel_1.sweep.j);
+
+	
+}
 
 

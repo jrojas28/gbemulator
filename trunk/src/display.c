@@ -32,10 +32,11 @@
 #include "display.h"
 #include "memory.h"
 #include "core.h"
+#include "save.h"
 
-static void draw_background(const Byte lcdc, const Byte ly);
-static void draw_window(const Byte lcdc, const Byte ly);
-static void draw_sprites(const Byte lcdc, const Byte ly);
+static void draw_background(const Byte lcdc, const Byte ly, const int colour);
+static void draw_window(const Byte lcdc, const Byte ly, const int colour);
+static void draw_sprites(const Byte lcdc, const Byte ly, const int priority);
 static inline Byte get_sprite_x(const unsigned int sprite);
 static inline Byte get_sprite_y(const unsigned int sprite);
 static inline Byte get_sprite_pattern(const unsigned int sprite);
@@ -56,14 +57,13 @@ static void tile_blit_0(Tile *tile, SDL_Surface *surface, const int x,
     					const int y, const int line);
 static void tile_blit_123(Tile *tile, SDL_Surface *surface, const int x, 
     					const int y, const int line);
-
 static void sprite_init(Sprite *sprite);
 static void sprite_fini(Sprite *sprite);
-void sprite_regenerate(Sprite *sprite, const int flip);
-void sprite_set_palette(Sprite *sprite, SDL_Palette *palette);
-void sprite_blit(Sprite *sprite, SDL_Surface* surface, const int x, const int y, 
+static void sprite_regenerate(Sprite *sprite, const int flip);
+static void sprite_set_palette(Sprite *sprite, SDL_Palette *palette);
+static void sprite_blit(Sprite *sprite, SDL_Surface* surface, const int x, const int y, 
 					const int line, const int flip);
-void sprite_set_height(Sprite *sprite, int height);
+static void sprite_set_height(Sprite *sprite, int height);
 
 
 Display display;
@@ -74,14 +74,13 @@ void display_init() {
 	display.bpp = 32;
 
 	if(SDL_Init(SDL_INIT_VIDEO) < 0) {
-		printf("sdl video initialisation failed: %s\b", SDL_GetError());
+		fprintf(stderr,"sdl video initialisation failed: %s\b", SDL_GetError());
 		exit(1);
 	}
-	//atexit(SDL_Quit);
+
 	display.screen = SDL_SetVideoMode(display.x_res, display.y_res, display.bpp, SDL_SWSURFACE);
 	if (display.screen == NULL) {
-		//cerr << xRes_ << "x" << yRes_ << " video mode initialisation failed\n";
-		printf("video mode initialisation failed\n");
+		fprintf(stderr, "video mode initialisation failed\n");
 		exit(1);
 	}
 	#ifdef WINDOWS
@@ -90,15 +89,13 @@ void display_init() {
 		activate_console(); 
 	#endif // WINDOWS
 
-	//cout << "sdl video initialised: " << xRes_ << "x" << yRes_
-	//          << " (bpp: " << bpp_ << ")" << "\n";
 	printf("sdl video initialised.\n");
 	SDL_WM_SetCaption("gbem", "gbem");
 
 	display.display = SDL_CreateRGBSurface(SDL_SWSURFACE, 
                                  DISPLAY_W, DISPLAY_H, display.bpp, 0, 0, 0, 0);	
 	if (display.display == NULL) {
-		printf("could not create surface\n");
+		fprintf(stderr, "could not create surface\n");
 		exit(1);
 	}
 
@@ -181,7 +178,12 @@ void display_reset() {
 	bzero(display.oam, SIZE_OAM);
 	set_vector_block(MEM_VIDEO, display.video_ram, SIZE_VIDEO);
 	set_vector_block(MEM_OAM, display.oam, 0x100);
-	display.last_lcdc = read_io(HWREG_LCDC);
+	//display.last_lcdc = read_io(HWREG_LCDC);
+
+	update_bg_palette();
+	update_sprite_palette_0();
+	update_sprite_palette_1();
+	
 	for (int i = 0; i < TILES; i++) {
 		display.tiles_tdt_0[i].pixel_data = display.video_ram + (i * 16);
 		tile_set_palette(&display.tiles_tdt_0[i], &display.background_palette);
@@ -208,9 +210,9 @@ void display_reset() {
 void display_update(unsigned int cycles) {
 	Byte ly, stat, lcdc;
 	display.cycles += cycles;
-	static unsigned int frames = 0;
-	static unsigned int ticks = 0;
-	static unsigned int old_ticks = 0;
+	//static unsigned int frames = 0;
+	//static unsigned int ticks = 0;
+	//static unsigned int old_ticks = 0;
 	ly = read_io(HWREG_LY);
 	stat = read_io(HWREG_STAT);
 	lcdc = read_io(HWREG_LCDC);
@@ -248,11 +250,19 @@ void display_update(unsigned int cycles) {
 		} else {
 			display.cycles -= (80 + 172 + 204);
 			if (lcdc & 0x01)
-			    draw_background(lcdc, ly);
+			    draw_background(lcdc, ly, COLOUR_0);
 		    if (lcdc & 0x20)
-			    draw_window(lcdc, ly);
+			    draw_window(lcdc, ly, COLOUR_0);
 			if (lcdc & 0x02)
-			    draw_sprites(lcdc, ly);
+			    draw_sprites(lcdc, ly, PRIORITY_LOW);
+			if (lcdc & 0x01)
+			    draw_background(lcdc, ly, COLOUR_123);
+		    if (lcdc & 0x20)
+			    draw_window(lcdc, ly, COLOUR_123);
+			if (lcdc & 0x02)
+			    draw_sprites(lcdc, ly, PRIORITY_HIGH);
+
+			
 			++ly;
 			if (ly == readb(HWREG_LYC)) {
 				if (!(stat & STAT_FLAG_COINCIDENCE) 
@@ -347,14 +357,16 @@ void draw_frame() {
 	scale_nearest_neighbor(display.display, display.screen);
 	//SDL_BlitSurface(display.display, NULL, display.screen, NULL);
 	SDL_Flip(display.screen);
-//	SDL_UpdateRect(display.screen, 0, 0, 0, 0);
+	//	SDL_UpdateRect(display.screen, 0, 0, 0, 0);
 }
 
 
 
-static void draw_background(const Byte lcdc, const Byte ly) {
+static void draw_background(const Byte lcdc, const Byte ly, const int colour) {
     Byte scx = read_io(HWREG_SCX);
     Byte scy = read_io(HWREG_SCY);
+    Byte wx = read_io(HWREG_WX);
+    Byte wy = read_io(HWREG_WY);
 	Byte tile_code;
 	Byte offset_x = scx & 0x07;
 	Byte offset_y = (ly + scy) & 0x07;
@@ -362,11 +374,16 @@ static void draw_background(const Byte lcdc, const Byte ly) {
 	Byte tile_x;
 	Byte tile_y;
 	int screen_x;
+	unsigned int x_pos;
 	for (unsigned int x = scx; x <= (scx + (unsigned)DISPLAY_W); x += 8) {
 		Byte bg_x = x & 0xFF;
 		tile_x = (bg_x / 8);
 		tile_y = (bg_y / 8);
 		screen_x = scx / 8;
+		x_pos = x - scx - offset_x;
+		/* dont draw over the window! */
+		if ((lcdc & 0x20) && (x_pos + 7 >= wx) && (ly >= wy))
+			continue;
 		if ((lcdc & 0x08) == 0) {
 			// tile map is at 0x9800-0x9BFF
 			tile_code = read_video_ram(TILE_MAP_0 + (tile_y * 32) + tile_x);
@@ -378,17 +395,21 @@ static void draw_background(const Byte lcdc, const Byte ly) {
 			// tile data is at 0x8800-0x97FF (indeces signed)
 			// complement upper bit
 			tile_code ^= 0x80;
-			tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x - scx - offset_x, ly, offset_y);
-			tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x - scx - offset_x, ly, offset_y);
+			if (colour == COLOUR_0)
+				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x_pos, ly, offset_y);
+			if (colour == COLOUR_123)
+				tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x_pos, ly, offset_y);
 		} else {
 			// tile data is at 0x8000-0x8FFF (indeces unsigned)
-			tile_blit_0(&display.tiles_tdt_0[tile_code], display.display, x - scx - offset_x, ly, offset_y);
-			tile_blit_123(&display.tiles_tdt_0[tile_code], display.display, x - scx - offset_x, ly, offset_y);
+			if (colour == COLOUR_0)
+				tile_blit_0(&display.tiles_tdt_0[tile_code], display.display, x_pos, ly, offset_y);
+			if (colour == COLOUR_123)
+				tile_blit_123(&display.tiles_tdt_0[tile_code], display.display, x_pos, ly, offset_y);
 		}
 	}
 }
 
-static void draw_window(const Byte lcdc, const Byte ly) {
+static void draw_window(const Byte lcdc, const Byte ly, const int colour) {
     Byte wx = read_io(HWREG_WX);
     Byte wy = read_io(HWREG_WY);
 	Byte tile_code;
@@ -397,7 +418,6 @@ static void draw_window(const Byte lcdc, const Byte ly) {
 	Byte tile_x;
 	Byte tile_y;
 	int x;
-	//int screen_x;
 	if ((win_y >= DISPLAY_H) || (ly < wy))
 		return;
 	for (unsigned int win_x = 0; win_x <= 255; win_x += 8) {
@@ -417,30 +437,35 @@ static void draw_window(const Byte lcdc, const Byte ly) {
 		    // tile data is at 0x8800-0x97FF (indeces signed)
 			// complement upper bit
 			tile_code ^= 0x80;
-			tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y);
-			tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y);
+			if (colour == COLOUR_0)
+				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y);
+			if (colour == COLOUR_123)
+				tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y);
 	    } else {
 		    // tile data is at 0x8000-0x8FFF (indeces unsigned)
-			//tilesTdt0_[tileCode]->blit0(display_, x, ly, offsetY);
-			//tilesTdt0_[tileCode]->blit123(display_, x, ly, offsetY);
-			tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y);
-			tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y);
+			if (colour == COLOUR_0)
+				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y);
+			if (colour == COLOUR_123)
+				tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y);
 		}
 	}
 }
 
 
-void draw_sprites(const Byte lcdc, const Byte ly) {
+/* TODO optimise? */
+void draw_sprites(const Byte lcdc, const Byte ly, const int priority) {
 	int sprite_x;
 	int sprite_y;
 	int offset_y;
+	Byte sprite_priority;
+	
 	for (int sprite = 0; sprite < OAM_BLOCKS; sprite++) {
 		sprite_y = get_sprite_y(sprite) - (signed)16;
 		sprite_x = get_sprite_x(sprite) - (signed)8;
-		if ((ly >= sprite_y) && (ly < (sprite_y + display.sprite_height))) {
+		sprite_priority = get_sprite_flags(sprite) >> 7;
+		if ((ly >= sprite_y) && (ly < (sprite_y + display.sprite_height)) && (sprite_priority == priority)) {
 			offset_y = (signed)ly - sprite_y;
 			sprite_blit(&display.sprites[get_sprite_pattern(sprite)], display.display, sprite_x, ly, offset_y, (get_sprite_flags(sprite) & 0x60) >> 5);
-			//sprites_[getSpritePattern(sprite)]->blit(display_, spriteX, ly, offsetY, (getSpriteFlags(sprite) & 0x60) >> 5);
 		}
 	}
 }
@@ -628,7 +653,7 @@ static void fill_rectangle(SDL_Surface *surface, const int x, const int y,
 	r.w = w;
 	r.h = h;
 	if (SDL_FillRect(surface, &r, colour) < 0) {
-		printf("warning: SDL_FillRect() failed: %s\n", SDL_GetError());
+		fprintf(stderr, "warning: SDL_FillRect() failed: %s\n", SDL_GetError());
 		exit(1);
 	}
 }
@@ -638,7 +663,7 @@ static void tile_init(Tile *tile) {
 	tile->surface_0 = SDL_CreateRGBSurface(SDL_SWSURFACE, 8, 8, 8, 0, 0, 0, 0);
 	tile->surface_123 = SDL_CreateRGBSurface(SDL_SWSURFACE, 8, 8, 8, 0, 0, 0, 0);
 	if ((tile->surface_0 == NULL) || (tile->surface_123 == NULL)) {
-		printf("surface creation failed: %s\n", SDL_GetError());
+		fprintf(stderr, "surface creation failed: %s\n", SDL_GetError());
 		exit(1);
 	}
 	SDL_SetColorKey(tile->surface_123, SDL_SRCCOLORKEY | SDL_RLEACCEL, 4);
@@ -710,7 +735,7 @@ static void sprite_init(Sprite *sprite) {
 	for (int i = 0; i < 4; i++) {
 		sprite->surface[i] = SDL_CreateRGBSurface(SDL_SWSURFACE, 8, 8, 8, 0, 0, 0, 0);
 		if (sprite->surface[i] == NULL) {
-			printf("surface creation failed: %s\n", SDL_GetError());
+			fprintf(stderr, "surface creation failed: %s\n", SDL_GetError());
 			exit(1);
 		}
 		SDL_SetColorKey(sprite->surface[i], SDL_SRCCOLORKEY | SDL_RLEACCEL, 0);
@@ -778,4 +803,35 @@ void sprite_set_height(Sprite *sprite, int height) {
 		SDL_SetColorKey(sprite->surface[i], SDL_SRCCOLORKEY | SDL_RLEACCEL, 0);
 		sprite->is_invalidated[i] = 1;
 	}
+}
+
+void display_save() {
+	save_uint("display.cycles", display.cycles);
+	save_int("sheight", display.sprite_height);
+	save_memory("vram", display.video_ram, SIZE_VIDEO);
+	save_memory("oam", display.oam, SIZE_OAM);
+}
+
+void display_load() {
+	display.cycles = load_uint("display.cycles");
+	display.sprite_height = load_int("sheight");
+	load_memory("vram", display.video_ram, SIZE_VIDEO);
+	load_memory("oam", display.oam, SIZE_OAM);
+	
+	update_bg_palette();
+	update_sprite_palette_0();
+	update_sprite_palette_1();
+
+	for (int i = 0; i < TILES; i++) {
+		tile_invalidate(&display.tiles_tdt_0[i]);
+	}
+	for (int i = 0; i < TILES; i++) {
+		display.tiles_tdt_1[i].pixel_data = display.video_ram + (i * 16) + 0x0800;
+		tile_invalidate(&display.tiles_tdt_1[i]);
+	}
+	for (int i = 0; i < SPRITES; i++) {
+		display.sprites[i].pixel_data = display.video_ram + (i * 16);
+		sprite_invalidate(&display.sprites[i]);
+	}
+	
 }

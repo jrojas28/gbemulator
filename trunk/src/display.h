@@ -41,7 +41,6 @@
 #define TDT_1					0x8800
 #define	TDT_1_LEN				0x1000
 
-
 #define TILE_MAP_0              0x9800
 #define TILE_MAP_1              0x9C00
 
@@ -77,6 +76,11 @@
 #define TILES					256
 #define SPRITES					256
 
+#define COLOUR_0				0
+#define COLOUR_123				1
+#define PRIORITY_HIGH			0
+#define PRIORITY_LOW			1
+
 #define X_FLIP 0x01
 #define Y_FLIP 0x02
 
@@ -85,7 +89,7 @@ struct tprite;
 
 typedef struct {
 	SDL_Surface *screen;
-	SDL_Surface* display;
+	SDL_Surface *display;
 	SDL_Palette background_palette;
 	SDL_Palette sprite_palette[2];
 	SDL_Color colours[4];
@@ -101,7 +105,7 @@ typedef struct {
 	struct tile* tiles_tdt_0;
 	struct tile* tiles_tdt_1;
 	struct sprite* sprites;
-	Byte last_lcdc;
+	//Byte last_lcdc;
 } Display;
 
 typedef struct tile {
@@ -130,7 +134,8 @@ void update_sprite_palette_0();
 void update_sprite_palette_1();
 void check_coincidence();
 void launch_dma(Byte address);
-
+void display_save();
+void display_load();
 
 static inline void write_video_ram(Word address, Byte value);
 static inline Byte read_video_ram(Word address);
