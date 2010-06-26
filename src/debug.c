@@ -36,9 +36,11 @@
 #include <string.h>
 #include "debug.h"
 #include "memory.h"
+#include "cart.h"
 
-char *replace_substring(char *string, const char *substring_1, 
+static char *replace_substring(char *string, const char *substring_1, 
                         const char *substring_2);
+static unsigned size_instr(Byte *rom, unsigned int address);
 
 static char **mnemonics;
 static char **operands;
@@ -89,13 +91,14 @@ void debug_init() {
 	fclose(fp);
 }
 
-void disasm_instr(Word address) {
+void disasm_exec(Word address) {
 	int i;
 	unsigned int opcode = readb(address);
 	unsigned int opcode_size;
 	char buffer[16];
     char *temp;
-	fprintf(stdout, "%04hx:\t", address);
+	extern Cart cart;
+	fprintf(stdout, "%04hx:%02hhx:\t", address, cart.rom_bank + (cart.rom_block * 0x20));
 	for (i = 0; i < entries; i++) {
 		if (opcode == opcodes[i])
 			break;
@@ -133,13 +136,73 @@ void disasm_instr(Word address) {
 		free(temp);
         return;
     }   
-    
-	
-	
-	fprintf(stdout, "%12s\t\t", operands[i]);
-	fprintf(stdout, "");
-	
 
+	fprintf(stdout, "%12s\t\t", operands[i]);
+	//fprintf(stdout, "");
+}
+
+static void disasm_instr(Byte *rom, unsigned int address) {
+	int i;
+	unsigned int opcode = rom[address];
+	unsigned int opcode_size;
+	char buffer[16];
+    char *temp;
+	extern Cart cart;
+	Word word;
+	fprintf(stdout, "%08x:\t", address);
+	for (i = 0; i < entries; i++) {
+		if (opcode == opcodes[i])
+			break;
+	}
+	if (i == entries) {
+		fprintf(stdout, "0x%hhx\n", opcode);
+		return;
+	}
+	fprintf(stdout, "%6s\t", mnemonics[i]);
+	/* dont bother printing "", just return */
+	if (strcmp(operands[i], "\"\"") == 0) {
+		fprintf(stdout, "\n");
+		return;
+	}
+	/* '*' means immediate, so we must replace it as such */
+    if (strstr(operands[i], "*") != NULL) {
+        opcode_size = (opcodes[i] / 0x100) + 1;
+        if ((length[i] - opcode_size) == 1) {
+            snprintf(buffer, 16, "%02hhx", rom[address + opcode_size]);
+        } else {
+			word = rom[address + opcode_size];
+			word |= (rom[address + opcode_size + 1]) << 8;
+            snprintf(buffer, 16, "%04hx", word);
+        }
+        temp = replace_substring(operands[i], "*", buffer);
+		fprintf(stdout, "%12s\n", temp);
+		free(temp);
+        return;
+    }
+        if (strstr(operands[i], "@") != NULL) {
+        int rel_addr;
+        opcode_size = (opcodes[i] / 0x100) + 1;
+        rel_addr = rom[address + opcode_size];
+        snprintf(buffer, 16, "%02hhX", rom[address + opcode_size]);
+        temp = replace_substring(operands[i], "@", buffer);
+		fprintf(stdout, "%12s\n", temp);
+		free(temp);
+        return;
+    }   
+	fprintf(stdout, "%12s\n", operands[i]);
+	//fprintf(stdout, "");
+}
+
+static unsigned size_instr(Byte *rom, unsigned int address) {
+	int i;
+	unsigned int opcode = rom[address];
+	for (i = 0; i < entries; i++) {
+		if (opcode == opcodes[i])
+			break;
+	}
+	if (i == entries) 
+		return 1;
+	return length[i];
 }
 
 
@@ -148,7 +211,7 @@ void disasm_instr(Word address) {
  * remember to free this! note: null string returned if substring1 isnt in
  * string.
  */
-char *replace_substring(char *string, const char *substring_1, 
+static char *replace_substring(char *string, const char *substring_1, 
                         const char *substring_2) {
     char *temp;
     char *new_string;
@@ -165,4 +228,13 @@ char *replace_substring(char *string, const char *substring_1,
     return new_string;
 }
 
+void disasm() {
+	extern Cart cart;
+	unsigned pc = 0;
+	while (pc < cart.rom_size) {
+		disasm_instr(cart.rom, pc);
+		pc += size_instr(cart.rom, pc);
+	
+	}
+}
 

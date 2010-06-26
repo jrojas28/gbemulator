@@ -126,7 +126,7 @@ int execute_cycles(int max_cycles) {
 */
 
 		if (debugging)
-			disasm_instr(REG_PC);
+			disasm_exec(REG_PC);
 		// switch opcode
 		switch (readb(REG_PC++)) {
 			/* 8bit loads: imm -> reg */
@@ -1610,7 +1610,7 @@ int execute_cycles(int max_cycles) {
 #endif
 			default:
 				printf("invalid opcode: %hhx ", readb(REG_PC - 1));
-				printf("at %hx\n", REG_PC - 2);
+				printf("at %hx\n", REG_PC - 1);
 				dump_state();
 				break;
 		}

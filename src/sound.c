@@ -225,6 +225,11 @@ void write_sound(Word address, Byte value) {
 			break;
 		case HWREG_NR12:	// channel 1 envelope
 			// envelope changes occur on next channel INIT
+			//if (!(value & 0xf0))
+			//	sound.channel_1.envelope.volume = 0;
+			//	sound.channel_1.envelope.sign = (value & 0x08) ? +1.0f : -1.0f;
+			//	sound.channel_1.envelope.number = value & 0x07;
+			//	sound.channel_1.envelope.time = convert_time((float)sound.channel_1.envelope.number / 64.0f);
 			break;
 		case HWREG_NR13:	// frequency lo
 			sound.channel_1.gb_frequency = (unsigned int)value | ((unsigned int)(read_io(HWREG_NR14) & 0x07) << 8);
@@ -280,6 +285,11 @@ void write_sound(Word address, Byte value) {
 			break;
 		case HWREG_NR22:	// channel 2 envelope
 			// envelope changes occur on next channel INIT
+			//if (!(value & 0xf0))
+			//	sound.channel_2.envelope.volume = 0;
+			//sound.channel_2.envelope.sign = (value & 0x08) ? +1.0f : -1.0f;
+			//sound.channel_2.envelope.number = value & 0x07;
+			//sound.channel_2.envelope.time = convert_time((float)sound.channel_2.envelope.number / 64.0f);
 			break;
 		case HWREG_NR23:	// frequency lo
 			sound.channel_2.gb_frequency = (unsigned int)value | ((unsigned int)(read_io(HWREG_NR24) & 0x07) << 8);
@@ -337,8 +347,13 @@ void write_sound(Word address, Byte value) {
 		case HWREG_NR41:	/* channel 4 sound length */
 			sound.channel_4.length = convert_time((float)(64 - (value & 0x3f)) / 256);
 			break;
-		case HWREG_NR42:	/* channel 5 envelope */
+		case HWREG_NR42:	/* channel 4 envelope */
 			/* envelope changes occur on next channel INIT */
+				//if (!(value & 0xf0))
+				//	sound.channel_4.envelope.volume = 0;
+				//sound.channel_4.envelope.sign = (value & 0x08) ? +1.0f : -1.0f;
+				//sound.channel_4.envelope.number = value & 0x07;
+				//sound.channel_4.envelope.time = convert_time((float)sound.channel_4.envelope.number / 64.0f);
 			break;
 		case HWREG_NR43:	/* LFSR settings */
 			s = (value & 0xf0) >> 4;
@@ -383,8 +398,6 @@ void write_sound(Word address, Byte value) {
 			sound.channel_2.is_on_left = (value & 0x02) ? 1 : 0;
 			sound.channel_1.is_on_left = (value & 0x01) ? 1 : 0;
 			break;
-
-		
 		default:
 			break;
 	}
@@ -606,9 +619,6 @@ static int call_back(const void *input_buffer, void *output_buffer,
 				left[3] = lfsr_15[data->channel_4.j] * data->channel_4.envelope.volume * data->channel_4.is_on_left;
 				right[3] = lfsr_15[data->channel_4.j] * data->channel_4.envelope.volume * data->channel_4.is_on_right;
 			}
-			if (data->channel_4.j > LFSR_15_SIZE) {
-				printf("argrhh\n");
-			}
 			++data->channel_4.i;
 			// if the waveform has reached its period, restart it
 			if (data->channel_4.i >= data->channel_4.period) {
@@ -621,11 +631,14 @@ static int call_back(const void *input_buffer, void *output_buffer,
 					data->channel_4.j = 0;
 			}
 			// if the sound is not continuous, reduce its length
+			//printf("%u. %hhu\n", data->channel_4.length, data->channel_4.is_continuous);
 			if (!data->channel_4.is_continuous) {
 				--data->channel_4.length;
 				// if the sound has completed its length, turn off the channel
-				if(data->channel_4.length == 0) // TODO unset bit in FF26
+				if(data->channel_4.length == 0) { // TODO unset bit in FF26
 					data->channel_4.is_on = 0;
+					mark_channel_off(4);
+				}
 			}
 			if (data->channel_4.envelope.number != 0) {
 				++data->channel_4.envelope.i;
@@ -637,8 +650,8 @@ static int call_back(const void *input_buffer, void *output_buffer,
 					if (data->channel_4.envelope.volume > 15)
 						data->channel_4.envelope.volume = 15;
 					if (data->channel_2.envelope.volume == 0) {
-						data->channel_2.is_on = 0;
-						mark_channel_off(2); // FIXME should this be here??
+						data->channel_4.is_on = 0;
+						mark_channel_off(4); // FIXME should this be here??
 					}
 					data->channel_4.envelope.i = 0;
 					++data->channel_4.envelope.j;
@@ -646,13 +659,6 @@ static int call_back(const void *input_buffer, void *output_buffer,
 			}
 		}
 
-
-		// reduce volume of all channels before mixing to prevent overflow
-		//for (j = 0; j < CHANNELS; j++) {
-		//	left[j] /= 4;
-		//	right[j] /= 4;
-		//}
-		
 		/*
 		 * mix the channels and expand to larger type temporarily, so that 
 		 * volume can be reduced with as little rounding down data loss 

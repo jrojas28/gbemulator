@@ -33,6 +33,10 @@
 #define DISPLAY_W 				160
 #define	DISPLAY_H				144
 
+#define OAM_CYCLES				(80)
+#define OAM_VRAM_CYCLES			(172 + OAM_CYCLES)
+#define HBLANK_CYCLES			(204 + OAM_VRAM_CYCLES)
+
 #define BG_W					256
 #define BG_H					256
 
@@ -132,7 +136,7 @@ void draw_frame();
 void update_bg_palette();
 void update_sprite_palette_0();
 void update_sprite_palette_1();
-void check_coincidence();
+Byte check_coincidence(Byte ly, Byte stat);
 void launch_dma(Byte address);
 void display_save();
 void display_load();

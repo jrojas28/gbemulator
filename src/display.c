@@ -34,6 +34,12 @@
 #include "core.h"
 #include "save.h"
 
+
+//static inline void check_coincidence(Byte ly);
+static inline int is_stat_flag_set(Byte stat, Byte flag);
+static inline Byte set_mode(Byte stat, Byte mode);
+
+
 static void draw_background(const Byte lcdc, const Byte ly, const int colour);
 static void draw_window(const Byte lcdc, const Byte ly, const int colour);
 static void draw_sprites(const Byte lcdc, const Byte ly, const int priority);
@@ -207,6 +213,7 @@ void display_reset() {
 }
 
 
+#if 0
 void display_update(unsigned int cycles) {
 	Byte ly, stat, lcdc;
 	display.cycles += cycles;
@@ -216,14 +223,7 @@ void display_update(unsigned int cycles) {
 	ly = read_io(HWREG_LY);
 	stat = read_io(HWREG_STAT);
 	lcdc = read_io(HWREG_LCDC);
-	if (ly == readb(HWREG_LYC)) {
-		if (!(stat & STAT_FLAG_COINCIDENCE) 
-                && (stat & STAT_INT_COINCIDENCE))
-			// generate interrupt if enabled
-			writeb(HWREG_IF, readb(HWREG_IF) | INT_STAT);
-			stat |= STAT_FLAG_COINCIDENCE;	// set coincidence flag
-	} else
-	    stat &= ~(STAT_FLAG_COINCIDENCE);	// unset coincidence flag
+	stat = check_coincidence(ly, stat);
 	start:
 	if (ly < DISPLAY_H) {
 		// not in vblank
@@ -264,14 +264,7 @@ void display_update(unsigned int cycles) {
 
 			
 			++ly;
-			if (ly == readb(HWREG_LYC)) {
-				if (!(stat & STAT_FLAG_COINCIDENCE) 
-                        && (stat & STAT_INT_COINCIDENCE))
-					// generate interrupt if enabled
-    				writeb(HWREG_IF, readb(HWREG_IF) | INT_STAT);
-					stat |= STAT_FLAG_COINCIDENCE;	// set coincidence flag
-			} else
-			    stat &= ~(STAT_FLAG_COINCIDENCE);	// unset coincidence flag
+			stat = check_coincidence(ly, stat);
 			goto start;
 		}
 	} else {
@@ -288,14 +281,7 @@ void display_update(unsigned int cycles) {
 			}
 #endif
 			draw_frame();
-			if (ly == readb(HWREG_LYC)) {
-				if (!(stat & STAT_FLAG_COINCIDENCE) 
-                        && (stat & STAT_INT_COINCIDENCE))
-					// generate interrupt if enabled
-					writeb(HWREG_IF, readb(HWREG_IF) | INT_STAT);
-					stat |= STAT_FLAG_COINCIDENCE;	// set coincidence flag
-			} else
-			    stat &= ~(STAT_FLAG_COINCIDENCE);	// unset coincidence flag
+			stat = check_coincidence(ly, stat);
 			// before we begin redrawing the screen, sort out some things.
 			// update sprite palettes - fairly ugly hack.
 			for (int sprite = 0; sprite < OAM_BLOCKS; sprite++) {
@@ -322,27 +308,19 @@ void display_update(unsigned int cycles) {
 			goto start;
 		} else {
 			// in vlbank
-			if (((stat & STAT_MODES) != STAT_MODE_VBLANK) 
-                    && (stat & STAT_INT_VBLANK)) {
-				writeb(HWREG_IF, readb(HWREG_IF) | INT_STAT);
-			}
-			if (((stat & STAT_MODES) != STAT_MODE_VBLANK) 
-					&& (readb(HWREG_IE) & INT_VBLANK)) {
+			if (ly == DISPLAY_H) {
+				if (((stat & STAT_MODES) != STAT_MODE_VBLANK) 
+		                && (stat & STAT_INT_VBLANK)) {
+					writeb(HWREG_IF, readb(HWREG_IF) | INT_STAT);
+				}
 				writeb(HWREG_IF, readb(HWREG_IF) | INT_VBLANK);
 			}
-
+		
 			stat = (stat & (~STAT_MODES)) | STAT_MODE_VBLANK;
 			if (display.cycles >= 456) {
 				// although we're in vblank LY continues to increase.
 				++ly;
-				if (ly == readb(HWREG_LYC)) {
-					if (!(stat & STAT_FLAG_COINCIDENCE) 
-                            && (stat & STAT_INT_COINCIDENCE))
-						// generate interrupt if enabled
-						writeb(HWREG_IF, readb(HWREG_IF) | INT_STAT);
-					stat |= STAT_FLAG_COINCIDENCE;		// set coincidence flag
-					} else
-			    		stat &= ~(STAT_FLAG_COINCIDENCE);	// unset coincidence flag
+				stat = check_coincidence(ly, stat);
 				display.cycles -= 456;
 				goto start;
 			}
@@ -351,6 +329,150 @@ void display_update(unsigned int cycles) {
 	write_io(HWREG_LY, ly);
 	write_io(HWREG_STAT, stat);
 }
+#endif
+
+
+// what we must do:
+// check coincidence LY = LYC
+// generate interrupt on coincidence, oam, blank or hblank
+// set coincidence flag
+// set mode flags
+
+void display_update(unsigned int cycles) {
+	Byte ly, stat, lcdc;
+	display.cycles += cycles;
+	ly = read_io(HWREG_LY);
+	stat = read_io(HWREG_STAT);
+	lcdc = read_io(HWREG_LCDC);
+
+	if (!(lcdc & 0x80))
+		return;
+	
+	start:
+	/* are we drawing the screen or are we in vblank? */
+	if (ly < DISPLAY_H) {
+		/* is the lcd reading from oam? */
+		if (display.cycles < OAM_CYCLES) {
+			/* check that we are not already in oam */
+			if ((stat & STAT_MODES) != STAT_MODE_OAM) {
+				/* set the mode flag in STAT */
+				stat = (stat & (~STAT_MODES)) | STAT_MODE_OAM;
+				/* if oam stat interrupt is enabled, raise the interrupt */
+				if (stat & STAT_INT_OAM) {
+					raise_int(INT_STAT);
+				}
+			}
+		} else
+		/* is the lcd reading from oam and vram? */
+		if (display.cycles < OAM_VRAM_CYCLES) {
+			/* check that we are not already in oam / vram */
+			if ((stat & STAT_MODES) != STAT_MODE_OAM_VRAM) {
+				/* set the mode flag in STAT */
+				stat = (stat & (~STAT_MODES)) | STAT_MODE_OAM_VRAM;
+			}
+		} else 
+		/* is the lcd in hblank? */
+		if (display.cycles < HBLANK_CYCLES) {
+			/* check that we are not already in hblank */
+			if ((stat & STAT_MODES) != STAT_MODE_HBLANK) {
+				/* set the mode flag in STAT */
+				stat = (stat & (~STAT_MODES)) | STAT_MODE_HBLANK;
+				/* if hblank stat interrupt is enabled, raise the interrupt */
+				if (stat & STAT_INT_HBLANK) {
+					raise_int(INT_STAT);
+				}
+			}
+		/* has the lcd finish hblank? */
+		} else {
+			if (lcdc & 0x01)
+			    draw_background(lcdc, ly, COLOUR_0);
+		    if (lcdc & 0x20)
+			    draw_window(lcdc, ly, COLOUR_0);
+			if (lcdc & 0x02)
+			    draw_sprites(lcdc, ly, PRIORITY_LOW);
+			if (lcdc & 0x01)
+			    draw_background(lcdc, ly, COLOUR_123);
+		    if (lcdc & 0x20)
+			    draw_window(lcdc, ly, COLOUR_123);
+			if (lcdc & 0x02)
+			    draw_sprites(lcdc, ly, PRIORITY_HIGH);
+			++ly;
+			stat = check_coincidence(ly, stat);
+			/* start from the beginning on the next line */
+			display.cycles -= HBLANK_CYCLES;
+			goto start;
+		}
+	} else {
+		/* in vblank */
+		/* check that we are not already in vblank */
+		if ((stat & STAT_MODES) != STAT_MODE_VBLANK) {
+			/* set the mode flag in STAT */
+			stat = (stat & (~STAT_MODES)) | STAT_MODE_VBLANK;
+			/* if vblank stat interrupt is enabled, raise the interrupt */
+			if (stat & STAT_INT_VBLANK) {
+				raise_int(INT_STAT);
+			}
+			raise_int(INT_VBLANK);
+		}
+		if (display.cycles >= HBLANK_CYCLES) {
+			++ly;
+			stat = check_coincidence(ly, stat);
+			display.cycles -= HBLANK_CYCLES;
+			/* has vblank just ended? */
+			if (ly == 154) {
+				ly = 0;
+				stat = check_coincidence(ly, stat);
+				draw_frame();
+				// before we begin redrawing the screen, sort out some things.
+				// update sprite palettes - fairly ugly hack.
+				for (int sprite = 0; sprite < OAM_BLOCKS; sprite++) {
+					sprite_set_palette(&display.sprites[get_sprite_pattern(sprite)], 
+						&display.sprite_palette[(get_sprite_flags(sprite) 
+							& FLAG_PALETTE) >> 4]);
+				}
+				// update sprite height - another fairly ugly hack.
+				// if spriteHeight has been changed from 8 to 16:
+				if ((lcdc & 0x04) && (display.sprite_height == 8)) {
+					display.sprite_height = 16;
+					for (int i = 0; i < SPRITES; i++) {
+						//sprites_[i]->setHeight(16);
+						sprite_set_height(&display.sprites[i], 16);
+					}
+				}
+				// if spriteHeight has been changed from 16 to 8:
+				if ((!(lcdc & 0x04)) && (display.sprite_height == 16)) {
+					display.sprite_height = 8;
+					for (int i = 0; i < SPRITES; i++) {
+						sprite_set_height(&display.sprites[i], 8);
+					}
+				}
+			}
+			goto start;
+		}
+	}
+	write_io(HWREG_LY, ly);
+	write_io(HWREG_STAT, stat);
+	
+}
+
+Byte check_coincidence(Byte ly, Byte stat) {
+	if (ly == read_io(HWREG_LYC)) {
+		/* check that this a new coincidence */
+		if (!(stat & STAT_FLAG_COINCIDENCE)) {
+			stat |= STAT_FLAG_COINCIDENCE;	// set coincidence flag
+			if (stat & STAT_INT_COINCIDENCE)
+				raise_int(INT_STAT);
+		}
+	} else {
+		stat &= ~(STAT_FLAG_COINCIDENCE);	// unset coincidence flag	
+	}
+	return stat;
+}
+
+static inline Byte set_mode(Byte stat, Byte mode) {
+	return (stat & (~STAT_MODES)) | mode;
+}
+
 
 
 void draw_frame() {

@@ -55,11 +55,21 @@ extern int debugging;
 
 int main (int argc, char *argv[]) {
 	printf("%s v%s\n", PACKAGE_NAME, PACKAGE_VERSION);
-	if (argc != 2) {
+	if (argc > 3) {
 		printf("Invalid arguments\n");
 		return 1;
 	}
-
+#if 0
+	if (argc == 3) {
+		memory_init();
+		load_rom(argv[2]);
+		debug_init();
+		disasm();
+		unload_rom();
+		memory_fini();
+		exit(0);
+	}
+#endif
 	memory_init();
 	load_rom(argv[1]);
 	display_init();

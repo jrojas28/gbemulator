@@ -381,6 +381,7 @@ static void set_switchable_ram() {
 // overflows.
 void write_rom(Word address, Byte value) {
 	if (cart.mbc == 1) {
+	//fprintf(stdout, "value: %hhx. address: %hx\n", value, address);
 		// mbc1 ram bank enable/disable
 		if (address < 0x2000) {
 			return;
@@ -397,6 +398,7 @@ void write_rom(Word address, Byte value) {
 			} else if (cart.rom_bank == 0x60) {
 				cart.rom_bank = 0x61;
 			}
+			//fprintf(stderr, "value: %hhx\tbank:%x\n", value, cart.rom_bank);
 			set_switchable_rom();
 			return;
 		}
@@ -416,6 +418,7 @@ void write_rom(Word address, Byte value) {
 		}
 		// mbc1 mode selection
 		if ((address >= 0x6000) && (address < 0x8000)) {
+
 			if ((value & 0x01) == 0x01) {
 				cart.mbc_mode = MBC1_MODE_4MROM_32KRAM;
 				cart.rom_bank = cart.rom_bank & 0x1F;

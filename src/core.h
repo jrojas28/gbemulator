@@ -30,8 +30,11 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "gbem.h"
+#ifndef _CORE_H
+#define _CORE_H
 
+#include "gbem.h"
+#include "memory.h"
 
 #define	INT_VBLANK	0x01
 #define	INT_STAT 	0x02
@@ -60,4 +63,10 @@ void core_reset();
 void dump_state();
 void core_save();
 void core_load();
+
+static inline void raise_int(Byte interrupt) {
+	writeb(HWREG_IF, readb(HWREG_IF) | interrupt);
+}
+
+#endif  // _CORE_H
 
