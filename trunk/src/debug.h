@@ -35,8 +35,8 @@
 
 #include "gbem.h"
 
-void disasm_instr(Word address);
+void disasm_exec(Word address);
 void debug_init();
-
+void disasm();
 
 #endif  // _DEBUG_H
