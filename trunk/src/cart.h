@@ -77,7 +77,10 @@ static inline Byte read_cart_ram(Word address);
 
 static inline void write_cart_ram(Word address, Byte value) {
 	extern Cart cart;
-	cart.ram[address + (cart.ram_bank * 0x2000)] = value;
+	if (cart.mbc != 2)
+		cart.ram[address + (cart.ram_bank * 0x2000)] = value;
+	else
+		cart.ram[address + (cart.ram_bank * 0x2000)] = value & 0x0f;
 }
 
 static inline Byte read_cart_ram(Word address) {

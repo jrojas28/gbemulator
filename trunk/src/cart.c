@@ -48,6 +48,7 @@ static const Byte sg_data[] ="\xce\xed\x66\x66\xcc\x0d\x00\x0b\x03\x73\x00\x83"
                              "\xdc\xcc\x6e\xe6\xdd\xdd\xd9\x99\xbb\xbb\x67\x63"
                              "\x6e\x0e\xec\xcc\xdd\xdc\x99\x9f\xbb\xb9\x33\x3e";
 
+extern enum Console console;
 
 int load_rom(const char* fn) {
 	struct stat fstats;
@@ -72,8 +73,8 @@ int load_rom(const char* fn) {
 	
 	// no roms will be larger than 1536kB (12Mbit)
 	if (cart.rom_size > 1536 * 1024) {
-		printf("rom error: roms cannot be larger than 12Mbit\n");
-		return -1;
+		//printf("rom error: roms cannot be larger than 12Mbit\n");
+		//return -1;
 	}
 
 	// load rom into memory
@@ -105,18 +106,34 @@ int load_rom(const char* fn) {
 	printf("rom %s loaded (%u bytes)\n", fn, cart.rom_size);
 	if ((rom_title_length = strnlen((char *)cart.rom + CART_ROM_TITLE, 17)) == 17) {
 		printf("invalid rom: title too long (>16 characters)\n");
-		free(cart.rom);
-		return -1;
+		//free(cart.rom);
+		//return -1;
 	}
-	//romTitle_ = new char[romTitleLen + 1];
 	cart.rom_title = malloc (rom_title_length + 1);
 	strncpy(cart.rom_title, (char *)cart.rom + CART_ROM_TITLE, rom_title_length);
 	cart.rom_title[rom_title_length] = '\0';
 	printf("\ttitle: %s", cart.rom_title);
 	// detect colour gameboy cartridge
+
+	switch (cart.rom[CART_COLOR]) {
+		case 0x80:
+			if (console == AUTO)
+				console = GBC;
+			break;
+		case 0xC0:
+			if (console == AUTO)
+				console = GBC;
+			break;
+		default:
+			if (console == AUTO)
+				console = DMG;
+			break;
+	}
+	
 	if (cart.rom[CART_COLOR] == 0x80) {
 		cart.is_for_cgb = 1;
-		printf("invalid rom: color gb unimplemented\n");
+		
+		//printf("invalid rom: color gb unimplemented\n");
 		//free(cart.rom);
 		//free(cart.rom_title);
 		//return -1;	
@@ -295,13 +312,16 @@ int load_rom(const char* fn) {
 			cart.rom_banks = 96;
 			break;
 		default:
-			cart.rom_size = 32 * 1024;
-			cart.rom_banks = 2;
-			printf("unrecognised rom size... assuming 32KB and continuing anyway...\n");
+			//cart.rom_size = 32 * 1024;
+			cart.rom_banks = cart.rom_size / 0x4000;
+			printf("unrecognised rom size... assuming %dB and continuing anyway...\n", cart.rom_size);
 			break;
 	}
 	// TODO: checksum / complement check test
 	// TODO: display more information?
+
+	if (cart.mbc == 2)
+		cart.ram_size = 512;
 
 	// allocate memory for on cartridge ram.
 	if (cart.ram_size < 8 * 1024)
@@ -309,6 +329,7 @@ int load_rom(const char* fn) {
 	else
 		cart.ram = malloc(sizeof(Byte) * cart.ram_size);
 
+		
 	cart.is_loaded = 1;
 
 
@@ -380,8 +401,8 @@ static void set_switchable_ram() {
 // TODO checks for bad bank selection? - this could potentially cause buffer
 // overflows.
 void write_rom(Word address, Byte value) {
-	if (cart.mbc == 1) {
-	//fprintf(stdout, "value: %hhx. address: %hx\n", value, address);
+	switch (cart.mbc) {
+		case 1:
 		// mbc1 ram bank enable/disable
 		if (address < 0x2000) {
 			return;
@@ -430,40 +451,88 @@ void write_rom(Word address, Byte value) {
 			}
 			return;
 		}
-	}
-	if (cart.mbc == 3) {
-		// mbc3 ram bank and TIMER enable/disable
+			break;
+		case 2:
+			// mbc2 ram bank enable/disable
+			if (address < 0x2000) {
+				return;
+			}
+			// mbc2 rom bank selection
+			if ((address >= 0x2000) && (address < 0x4000)) {
+				cart.rom_bank = value & 0x0F;
+				if (cart.rom_bank == 0)
+					cart.rom_bank = 1;
+				set_switchable_rom();
+				return;
+			}
+			break;
+		case 3:
+			// mbc3 ram bank and TIMER enable/disable
+			if (address < 0x2000) {
+				// STUBBED
+				return;
+			}
+			// mbc3 rom bank selection
+			if ((address >= 0x2000) && (address < 0x4000)) {
+				cart.rom_bank = value & 0x7F;
+				if (cart.rom_bank == 0)
+					cart.rom_bank = 1;
+				set_switchable_rom();
+				return;
+			}
+			// mbc3 ram bank / rtc map selection
+			if ((address >= 0x4000) && (address < 0x6000)) {
+				if ((value >= 0x08) && (value <= 0x0C))
+					cart.mbc3_rtc_map = value;
+				else {
+					cart.ram_bank = value & 0x03;
+					set_switchable_ram();
+				}
+				return;
+			}
+			// mbc3 latch clock data
+			if ((address >= 0x6000) && (address < 0x8000)) {
+				if ((value & 0xFE) == 0) {
+					// STUBBED: Latch clock data here
+				}
+				return;
+			}
+			break;
+		case 4:
+			break;
+		case 5:
+		// mbc5 ram bank enable/disable
 		if (address < 0x2000) {
-			// STUBBED
 			return;
 		}
-		// mbc3 rom bank selection
-		if ((address >= 0x2000) && (address < 0x4000)) {
-			cart.rom_bank = value & 0x7F;
+		// mbc5 rom bank selection
+		if ((address >= 0x2000) && (address < 0x3000)) {
+			cart.rom_bank = (cart.rom_bank & !0xff) | value;
 			if (cart.rom_bank == 0)
 				cart.rom_bank = 1;
 			set_switchable_rom();
 			return;
 		}
-		// mbc3 ram bank / rtc map selection
-		if ((address >= 0x4000) && (address < 0x6000)) {
-			if ((value >= 0x08) && (value <= 0x0C))
-				cart.mbc3_rtc_map = value;
-			else {
-				cart.ram_bank = value & 0x03;
-				set_switchable_ram();
-			}
+		if ((address >= 0x3000) && (address < 0x4000)) {
+			cart.rom_bank = (cart.rom_bank & 0xff) | ((value & 0x01) << 8);
+			if (cart.rom_bank == 0)
+				cart.rom_bank = 1;
+			set_switchable_rom();
 			return;
 		}
-		// mbc3 latch clock data
-		if ((address >= 0x6000) && (address < 0x8000)) {
-			if ((value & 0xFE) == 0) {
-				// STUBBED: Latch clock data here
-			}
+
+		// mbc5 ram bank selection
+			if ((address >= 0x4000) && (address < 0x6000)) {
+			cart.ram_bank = value & 0x07;
+			set_switchable_ram();
 			return;
 		}
-	}
-	printf("invalid write to rom\n");
+			break;
+		default:
+			printf("invalid write to rom\n");
+			break;
+	}	
+
 }
 
 Byte read_rom(Word address) {

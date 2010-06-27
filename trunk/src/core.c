@@ -101,6 +101,8 @@ static inline void ret();
 
 static inline void handle_interrupts();
 
+extern enum Console console;
+
 CoreState core;
 int debugging = 0;
 
@@ -1364,8 +1366,20 @@ int execute_cycles(int max_cycles) {
 				cycles += 4;
 				break;
 			case 0x10:   // STOP
-				++REG_PC;		// skip over the 0x00
-				core.is_stopped = 1;
+				++REG_PC;		/* skip over the 0x00 */
+				/* has a speed switch been requested? */
+				if ((read_io(HWREG_KEY1) & 0x01) && 
+						((console == GBC) || (console == GBA))) {
+					if (core.frequency == FREQ_NORMAL) {
+						core.frequency = FREQ_DOUBLE;
+						write_io(HWREG_KEY1, 0x80);
+					}
+					else if (core.frequency == FREQ_DOUBLE) {
+						core.frequency = FREQ_NORMAL;
+						write_io(HWREG_KEY1, 0x00);
+					}
+				} else
+					core.is_stopped = 1;
 				cycles += 4;
 				break;
 			case 0xF3:	// DI
@@ -1635,12 +1649,30 @@ void core_reset() {
 	FLAG_C = 1;
 	// TODO: Different AF values for other gameboys.
 	// Set CPU registers to their default values
-	REG_A  = 0x01;
+
 	REG_BC  = 0x0013;
 	REG_DE  = 0x00D8;
 	REG_HL  = 0x014D;
 	REG_PC  = 0x0100;
 	REG_SP  = 0xFFFE;
+
+	/* different consoles have different initial values for A and B */
+	switch(console) {
+		case DMG:
+			REG_A = 0x01;
+			break;
+		case POCKET:
+			REG_A = 0xff;
+			break;
+		case GBA:
+			REG_B = 0x01;
+		case GBC:
+			REG_A = 0x11;
+			break;
+		default:
+			REG_A = 0x01;
+			break;
+	}
 
 	core.is_halted = 0;
 	core.is_stopped = 0;
@@ -1678,6 +1710,8 @@ void core_reset() {
 	write_io(HWREG_WY, 		0x00);
 	write_io(HWREG_WX, 		0x00);
 	write_io(HWREG_IE, 		0x00);
+	
+	core.frequency = FREQ_NORMAL;
 }
 
 void dump_state() {

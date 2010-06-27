@@ -36,7 +36,9 @@ gbem_SOURCES = \
 	debug.c \
 	debug.h \
 	save.c \
-	save.h
+	save.h \
+	scale.c \
+	scale.h
 
 gbem_LDFLAGS = -pg
 

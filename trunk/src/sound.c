@@ -99,11 +99,11 @@ void sound_init() {
 	}
 	
 	PaError err;
-    PaStreamParameters output_parameters;
+	PaStreamParameters output_parameters;
 	const PaDeviceInfo* pdi;
-    
-    err = Pa_Initialize();
-    if (err != paNoError) {
+	
+	err = Pa_Initialize();
+	if (err != paNoError) {
 		Pa_Terminate();
 		fprintf(stderr, "could not initialise portaudio: %s\n", Pa_GetErrorText(err));
 		exit(1);

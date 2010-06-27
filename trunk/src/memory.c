@@ -104,12 +104,20 @@ void writeb(Word address, Byte value) {
 	}
 	// i/o memory
 	else if (address < MEM_IO + SIZE_IO) {
-        // the bottom 3 bits of STAT are read only.	
-        if (address == HWREG_STAT) {
-			himem[address - MEM_IO] = (himem[address - MEM_IO] & 0x07) 
-                | (value & 0xF8);
-            return;
-        }
+		switch (address) {
+        /* the bottom 3 bits of STAT are read only.	*/
+			case HWREG_STAT:
+				himem[address - MEM_IO] = (himem[address - MEM_IO] & 0x07) 
+                	| (value & 0xF8);
+				return;
+				break;
+		/* the top bit of KEY1 is read only */
+			case HWREG_KEY1:
+				himem[address - MEM_IO] = (himem[address - MEM_IO] & 0x80) | (value & 0x7f);
+				return;
+                break;
+		}
+
 		himem[address - MEM_IO] = value;
 		if ((address >= 0xff10) && (address < 0xff30)) {
 			write_sound(address, value);
@@ -119,20 +127,34 @@ void writeb(Word address, Byte value) {
 			write_wave(address, value);
 			return;
 		}
-		// If DIV is written to, it is set to 0.
-		if 	(address == HWREG_DIV)
-			himem[address - MEM_IO] = 0;
-		else if (address == HWREG_BGP)
-			update_bg_palette();
-		else if (address == HWREG_OBP0)
-			update_sprite_palette_0();
-		else if (address == HWREG_OBP1)
-			update_sprite_palette_1();
-		else if (address == HWREG_DMA)
-			launch_dma(value);
-		else if(address == HWREG_P1)
-			update_p1();
+
+		switch(address) {
+			case HWREG_DIV:
+				// If DIV is written to, it is set to 0.
+				himem[address - MEM_IO] = 0;			
+				break;
+			case HWREG_BGP:
+				update_bg_palette();
+				break;
+			case HWREG_OBP0:
+				update_sprite_palette_0();
+				break;
+			case HWREG_OBP1:
+				update_sprite_palette_1();
+				break;
+			case HWREG_DMA:
+				launch_dma(value);
+				break;
+			case HWREG_P1:
+				update_p1();
+				break;
+			case HWREG_LY:
+			case HWREG_LYC:
+				write_io(HWREG_STAT, check_coincidence(read_io(HWREG_LY), read_io(HWREG_STAT)));
+				break;
+		}
 		return;
+
 	}
 
 	// unusable memory

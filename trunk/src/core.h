@@ -20,7 +20,6 @@
  * gbem IS PROVIDED BY abhoriel ``AS IS'' AND ANY EXPRESS
  * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL abhoriel OR ANY OTHER CONTRIBUTORS
  * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
@@ -42,20 +41,18 @@
 #define	INT_SERIAL 	0x08
 #define INT_BUTTON 	0x10
 
+#define FREQ_NORMAL	1
+#define FREQ_DOUBLE	2
+
 typedef struct {
 		/* CPU registers */
 		union UWord reg_af, reg_bc, reg_de, reg_hl;
 		Word reg_sp, reg_pc;
-	
 		/* zero, subtract, half carry and carry flags */
 		int flag_z, flag_n, flag_h, flag_c;
-
 		int ei;
-		
 		int is_halted, is_stopped, ime;
-
-		unsigned int period;
-//		bool execute;
+		unsigned int frequency;
 } CoreState;
 
 int execute_cycles(int max_cycles);
