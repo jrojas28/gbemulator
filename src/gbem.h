@@ -118,6 +118,9 @@ union UWord {
 #define HWREG_OBP1				0xFF49
 #define HWREG_WY				0xFF4A
 #define HWREG_WX				0xFF4B
+#define HWREG_KEY1				0xFF4D
+#define HWREG_RP				0xFF56
+#define HWREG_SVBK				0xFF70
 #define HWREG_IE				0xFFFF
 
 #define MEM_INT_VBLANK				0x0040
@@ -126,4 +129,8 @@ union UWord {
 #define MEM_INT_SERIAL				0x0058
 #define MEM_INT_BUTTON				0x0060
 
+enum Console {DMG, POCKET, GBC, SGB, GBA, AUTO};
+enum ConsoleMode {NORMAL, DMG_EMU, GBC_ENABLED};
+
 #endif /* _GBEM_H */
+

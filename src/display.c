@@ -54,7 +54,6 @@ static inline void put_pixel(const SDL_Surface *surface, const int x,
 static void fill_rectangle(SDL_Surface *surface, const int x, const int y, 
 						const int w, const int h, 
 						const unsigned int colour);
-static void scale_nearest_neighbor(SDL_Surface *src, SDL_Surface *dest);
 static void tile_init(Tile *tile);
 static void tile_fini(Tile *tile);
 static void tile_regenerate(Tile *tile);
@@ -99,13 +98,16 @@ void display_init() {
 	SDL_WM_SetCaption("gbem", "gbem");
 
 	display.display = SDL_CreateRGBSurface(SDL_SWSURFACE, 
-                                 DISPLAY_W, DISPLAY_H, display.bpp, 0, 0, 0, 0);	
+                                 DISPLAY_W, DISPLAY_H, display.bpp, 0, 0, 0, 0);
 	if (display.display == NULL) {
 		fprintf(stderr, "could not create surface\n");
 		exit(1);
 	}
 
-	display.display = SDL_DisplayFormat(display.display);
+	printf("screen: %u\n", display.screen->format->BytesPerPixel);
+	printf("display: %u\n", display.display->format->BytesPerPixel);
+
+	//display.display = SDL_DisplayFormat(display.display);
 
 	display.video_ram = malloc(sizeof(Byte) * SIZE_VIDEO);
 	display.oam = malloc(sizeof(Byte) * SIZE_OAM);
@@ -384,6 +386,7 @@ void display_update(unsigned int cycles) {
 			}
 		/* has the lcd finish hblank? */
 		} else {
+			/* draw the line */
 			if (lcdc & 0x01)
 			    draw_background(lcdc, ly, COLOUR_0);
 		    if (lcdc & 0x20)
@@ -476,10 +479,8 @@ static inline Byte set_mode(Byte stat, Byte mode) {
 
 
 void draw_frame() {
-	scale_nearest_neighbor(display.display, display.screen);
-	//SDL_BlitSurface(display.display, NULL, display.screen, NULL);
+	scale_nn2x(display.display, display.screen);
 	SDL_Flip(display.screen);
-	//	SDL_UpdateRect(display.screen, 0, 0, 0, 0);
 }
 
 
@@ -679,22 +680,6 @@ static inline Byte get_sprite_flags(const unsigned int sprite) {
 	return display.oam[(OAM_BLOCK_SIZE * sprite) + OAM_FLAGS];
 }
 
-static void scale_nearest_neighbor(SDL_Surface *src, SDL_Surface *dest) {
-	double w_ratio = src->w / (double)dest->w;
-	double h_ratio = src->h / (double)dest->h;
-	double px, py;
-	int pixel;
-
-	for (int y = 0; y < dest->h; y++) {
-		for (int x = 0; x < dest->w; x++) {
-			px = floor(x * w_ratio);
-			py = floor(y * h_ratio);
-			pixel = get_pixel(src, (int)px, (int)py);
-			put_pixel(dest, (int)x, (int)y, pixel);
-		}
-	}
-	return;
-}
 
 
 void launch_dma(Byte address) {
@@ -737,7 +722,6 @@ static inline void put_pixel(const SDL_Surface *surface, const int x, const int 
 	//assert (x < surface->w); assert (x >= 0);
 	//assert (y < surface->h); assert (y >= 0);
 	unsigned int bpp = surface->format->BytesPerPixel;
-	//unsigned int bpp = 4;
 	Uint8 *p = (Uint8*)surface->pixels + y * surface->pitch + x * bpp;
 	switch (bpp) {
 		case 1:

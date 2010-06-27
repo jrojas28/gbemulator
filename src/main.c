@@ -45,9 +45,13 @@
 #include "debug.h"
 #include "save.h"
 
-#define TIMING_GRANULARITY	50
+#define TIMING_GRANULARITY	100
 #define TIMING_INTERVAL		(1000000000 / TIMING_GRANULARITY)
 #define MAX_CPU_CYCLES		200
+
+enum Console console = DMG;
+enum ConsoleMode console_mode;
+extern CoreState core;
 
 void reset();
 void quit();
@@ -77,7 +81,7 @@ int main (int argc, char *argv[]) {
 	sound_init();
 	debug_init();
 	reset();
-	
+	int i;
 	unsigned int is_paused = 0;
 	unsigned int cycles = 0;
 	unsigned int core_period;				// in nanoseconds
@@ -94,19 +98,24 @@ int main (int argc, char *argv[]) {
 	// based on interrupt predictions...
 	while(1) {
 		if ((!is_delayed) && (!is_paused)) {
-			cycles = execute_cycles(200);
-			core_period = (cycles >> 2) * (1000000000/1048576); // FIXME
-			core_time += core_period;
-			timer_check(cycles);
-			display_update(cycles);
+			for (int i = 0; i < 10; i++) {
+				cycles = execute_cycles(200);
+				core_period = (cycles >> 2) * (1000000000/(1048576 * core.frequency));
+				core_time += core_period;
+				timer_check(cycles * core.frequency);
+				display_update(cycles);
+			}
 		}
+		
+		if (is_paused) 
+			SDL_Delay(10);
 
 		delays = core_time / TIMING_INTERVAL;
 		if (delays > delay) {
 			real_time_passed = ((SDL_GetTicks() * 1000000) - real_time);
 			if (core_time > real_time_passed) {
-				if (core_time > real_time_passed + (2 * 1000000));
-					//SDL_Delay(1);
+				if (core_time > real_time_passed + (2 * 1000000))
+					SDL_Delay(1);
 				is_delayed = 1;
 			} else {
 				delay = delays;
@@ -162,7 +171,6 @@ int main (int argc, char *argv[]) {
 	}
 	return 0;
 }
-
 
 // reset the emulator. must be called before ROM execution.
 void reset() {
