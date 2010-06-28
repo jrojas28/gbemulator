@@ -104,9 +104,6 @@ void display_init() {
 		exit(1);
 	}
 
-	printf("screen: %u\n", display.screen->format->BytesPerPixel);
-	printf("display: %u\n", display.display->format->BytesPerPixel);
-
 	//display.display = SDL_DisplayFormat(display.display);
 
 	display.video_ram = malloc(sizeof(Byte) * SIZE_VIDEO);

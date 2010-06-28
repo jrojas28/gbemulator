@@ -74,18 +74,20 @@ void scale_nn2x(SDL_Surface* restrict src, SDL_Surface* restrict dest) {
 	Uint8 * restrict p_src;
 	Uint8 * restrict p_dest;
 	Uint8 * restrict p_dest2;
+	Uint32 pixel;
 	for (int y = 0; y < src->h; y++) {
 		p_src = (Uint8 *)src->pixels + (src->pitch * y);
 		p_dest = (Uint8 *)dest->pixels + (dest->pitch * y * 2);
 		p_dest2 = (Uint8 *)dest->pixels + dest->pitch * ((y * 2) + 1);
 		for (int x = 0; x < src->w; x++) {
+			pixel = *(Uint32 *)p_src;
+			*(Uint32 *)(p_dest) = pixel;
+			*(Uint32 *)(p_dest + bpp) = pixel;
+			*(Uint32 *)(p_dest2) = pixel;
+			*(Uint32 *)(p_dest2 + bpp) = pixel;
 			p_src += bpp;
 			p_dest += bpp * 2;
 			p_dest2 += bpp * 2;
-			*(Uint32 *)(p_dest) = *(Uint32 *)p_src;
-			*(Uint32 *)(p_dest + bpp) = *(Uint32 *)p_src;
-			*(Uint32 *)(p_dest2) = *(Uint32 *)p_src;
-			*(Uint32 *)(p_dest2 + bpp) = *(Uint32 *)p_src;
 		}
 	}
 }
