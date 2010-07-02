@@ -33,12 +33,9 @@
 #include "memory.h"
 #include "core.h"
 #include "save.h"
+#include "scale.h"
 
-
-//static inline void check_coincidence(Byte ly);
-static inline int is_stat_flag_set(Byte stat, Byte flag);
 static inline Byte set_mode(Byte stat, Byte mode);
-
 
 static void draw_background(const Byte lcdc, const Byte ly, const int colour);
 static void draw_window(const Byte lcdc, const Byte ly, const int colour);
@@ -72,6 +69,8 @@ static void sprite_set_height(Sprite *sprite, int height);
 
 
 Display display;
+extern enum Console console;
+extern enum ConsoleMode console_mode;
 
 void display_init() {
 	display.x_res = 320;
@@ -106,9 +105,6 @@ void display_init() {
 
 	//display.display = SDL_DisplayFormat(display.display);
 
-	display.video_ram = malloc(sizeof(Byte) * SIZE_VIDEO);
-	display.oam = malloc(sizeof(Byte) * SIZE_OAM);
-
 	display.colours[0].r = 0xFF; 
 	display.colours[0].g = 0xFF; 
 	display.colours[0].b = 0xFF;
@@ -137,19 +133,8 @@ void display_init() {
 	display.background_palette.colors[4].g = 0xFF;
 	display.background_palette.colors[4].b = 0xFF;
 	
-	display.tiles_tdt_0 = malloc(sizeof(Tile) * TILES);
-	display.tiles_tdt_1 = malloc(sizeof(Tile) * TILES);
-	display.sprites = malloc(sizeof(Sprite) * SPRITES);
-
-	for (int i = 0; i < TILES; i++) {
-		tile_init(&display.tiles_tdt_0[i]);
-	}
-	for (int i = 0; i < TILES; i++) {
-		tile_init(&display.tiles_tdt_1[i]);
-	}
-	for (int i = 0; i < SPRITES; i++) {
-		sprite_init(&display.sprites[i]);
-	}
+	display.vram = NULL;
+	display.oam = NULL;
 	
 	return;
 }
@@ -166,8 +151,10 @@ void display_fini() {
 	}
 
 	SDL_FreeSurface(display.display);
-	free(display.video_ram);
-	free(display.oam);
+	if (display.vram != NULL)
+		free(display.vram);
+	if (display.oam != NULL)
+		free(display.oam);
 	free(display.background_palette.colors);
 	free(display.sprite_palette[0].colors);
 	free(display.sprite_palette[1].colors);
@@ -179,28 +166,52 @@ void display_fini() {
 
 
 void display_reset() {
-	bzero(display.video_ram, SIZE_VIDEO);
+	if (((console == GBC) || (console == GBA)) && (console_mode == GBC_ENABLED)) {
+		display.vram = malloc(sizeof(Byte) * VRAM_SIZE_GBC);
+		bzero(display.vram, VRAM_SIZE_GBC);
+	} else {
+		display.vram = malloc(sizeof(Byte) * VRAM_SIZE_DMG);
+		bzero(display.vram, VRAM_SIZE_DMG);
+	}
+
+	display.vram_bank = 0;
+	display.oam = malloc(sizeof(Byte) * SIZE_OAM);
 	bzero(display.oam, SIZE_OAM);
-	set_vector_block(MEM_VIDEO, display.video_ram, SIZE_VIDEO);
+	set_vector_block(MEM_VIDEO, display.vram + (display.vram_bank * 0x2000), SIZE_VIDEO);
 	set_vector_block(MEM_OAM, display.oam, 0x100);
-	//display.last_lcdc = read_io(HWREG_LCDC);
+
+	
+	display.tiles_tdt_0 = malloc(sizeof(Tile) * TILES);
+	display.tiles_tdt_1 = malloc(sizeof(Tile) * TILES);
+	display.sprites = malloc(sizeof(Sprite) * SPRITES);
+
+	for (int i = 0; i < TILES; i++) {
+		tile_init(&display.tiles_tdt_0[i]);
+	}
+	for (int i = 0; i < TILES; i++) {
+		tile_init(&display.tiles_tdt_1[i]);
+	}
+	for (int i = 0; i < SPRITES; i++) {
+		sprite_init(&display.sprites[i]);
+	}
+
 
 	update_bg_palette();
 	update_sprite_palette_0();
 	update_sprite_palette_1();
 	
 	for (int i = 0; i < TILES; i++) {
-		display.tiles_tdt_0[i].pixel_data = display.video_ram + (i * 16);
+		display.tiles_tdt_0[i].pixel_data = display.vram + (i * 16);
 		tile_set_palette(&display.tiles_tdt_0[i], &display.background_palette);
 		tile_invalidate(&display.tiles_tdt_0[i]);
 	}
 	for (int i = 0; i < TILES; i++) {
-		display.tiles_tdt_1[i].pixel_data = display.video_ram + (i * 16) + 0x0800;
+		display.tiles_tdt_1[i].pixel_data = display.vram + (i * 16) + 0x0800;
 		tile_set_palette(&display.tiles_tdt_1[i], &display.background_palette);
 		tile_invalidate(&display.tiles_tdt_1[i]);
 	}
 	for (int i = 0; i < SPRITES; i++) {
-		display.sprites[i].pixel_data = display.video_ram + (i * 16);
+		display.sprites[i].pixel_data = display.vram + (i * 16);
 		sprite_set_palette(&display.sprites[i], &display.background_palette);
 		sprite_invalidate(&display.sprites[i]);
 	}
@@ -211,131 +222,10 @@ void display_reset() {
 	SDL_FillRect(display.screen, NULL, SDL_MapRGB(display.screen->format, 0xff, 0xff, 0xff));
 }
 
-
-#if 0
-void display_update(unsigned int cycles) {
-	Byte ly, stat, lcdc;
-	display.cycles += cycles;
-	//static unsigned int frames = 0;
-	//static unsigned int ticks = 0;
-	//static unsigned int old_ticks = 0;
-	ly = read_io(HWREG_LY);
-	stat = read_io(HWREG_STAT);
-	lcdc = read_io(HWREG_LCDC);
-	stat = check_coincidence(ly, stat);
-	start:
-	if (ly < DISPLAY_H) {
-		// not in vblank
-		if (display.cycles < 80) {
-			// lcd controller is reading from oam memory
-			if (((stat & STAT_MODES) != STAT_MODE_OAM) && (stat & STAT_INT_OAM))
-				// generate interrupt if enabled
-				writeb(HWREG_IF, readb(HWREG_IF) | INT_STAT);
-			stat = (stat & (~STAT_MODES)) | STAT_MODE_OAM;
-		} else if (display.cycles < 80 + 172) {
-			// lcd controller is reading from oam memory and vram
-			// FIXME does this go here?
-			if (((stat & STAT_MODES) != STAT_MODE_OAM) && (stat & STAT_INT_OAM))
-				// generate interrupt if enabled
-				writeb(HWREG_IF, readb(HWREG_IF) | INT_STAT);
-			stat = (stat & (~STAT_MODES)) | STAT_MODE_OAM_VRAM;
-		} else if (display.cycles < 80 + 172 + 204) {
-			// lcd controller in hblank
-			if (((stat & STAT_MODES) != STAT_MODE_HBLANK)
-                    && (stat & STAT_INT_HBLANK))
-				// generate interrupt if enabled
-			    writeb(HWREG_IF, readb(HWREG_IF) | INT_STAT);
-			stat = (stat & (~STAT_MODES)) | STAT_MODE_HBLANK;
-		} else {
-			display.cycles -= (80 + 172 + 204);
-			if (lcdc & 0x01)
-			    draw_background(lcdc, ly, COLOUR_0);
-		    if (lcdc & 0x20)
-			    draw_window(lcdc, ly, COLOUR_0);
-			if (lcdc & 0x02)
-			    draw_sprites(lcdc, ly, PRIORITY_LOW);
-			if (lcdc & 0x01)
-			    draw_background(lcdc, ly, COLOUR_123);
-		    if (lcdc & 0x20)
-			    draw_window(lcdc, ly, COLOUR_123);
-			if (lcdc & 0x02)
-			    draw_sprites(lcdc, ly, PRIORITY_HIGH);
-
-			
-			++ly;
-			stat = check_coincidence(ly, stat);
-			goto start;
-		}
-	} else {
-		// check if lcd controller is in vblank or if it has finished.
-		if (ly == 154) {
-			// vblank has just finished
-			ly = 0;
-#if 0
-			++frames;
-			if (SDL_GetTicks() - ticks >= 1000) {
-				printf("fps: %u\n", frames);
-				frames = 0;
-				ticks = SDL_GetTicks();
-			}
-#endif
-			draw_frame();
-			stat = check_coincidence(ly, stat);
-			// before we begin redrawing the screen, sort out some things.
-			// update sprite palettes - fairly ugly hack.
-			for (int sprite = 0; sprite < OAM_BLOCKS; sprite++) {
-				sprite_set_palette(&display.sprites[get_sprite_pattern(sprite)], 
-				    &display.sprite_palette[(get_sprite_flags(sprite) 
-					    & FLAG_PALETTE) >> 4]);
-			}
-			// update sprite height - another fairly ugly hack.
-			// if spriteHeight has been changed from 8 to 16:
-			if ((lcdc & 0x04) && (display.sprite_height == 8)) {
-				display.sprite_height = 16;
-				for (int i = 0; i < SPRITES; i++) {
-					//sprites_[i]->setHeight(16);
-					sprite_set_height(&display.sprites[i], 16);
-				}
-			}
-			// if spriteHeight has been changed from 16 to 8:
-			if ((!(lcdc & 0x04)) && (display.sprite_height == 16)) {
-				display.sprite_height = 8;
-				for (int i = 0; i < SPRITES; i++) {
-					sprite_set_height(&display.sprites[i], 8);
-				}
-			}
-			goto start;
-		} else {
-			// in vlbank
-			if (ly == DISPLAY_H) {
-				if (((stat & STAT_MODES) != STAT_MODE_VBLANK) 
-		                && (stat & STAT_INT_VBLANK)) {
-					writeb(HWREG_IF, readb(HWREG_IF) | INT_STAT);
-				}
-				writeb(HWREG_IF, readb(HWREG_IF) | INT_VBLANK);
-			}
-		
-			stat = (stat & (~STAT_MODES)) | STAT_MODE_VBLANK;
-			if (display.cycles >= 456) {
-				// although we're in vblank LY continues to increase.
-				++ly;
-				stat = check_coincidence(ly, stat);
-				display.cycles -= 456;
-				goto start;
-			}
-		}
-	}
-	write_io(HWREG_LY, ly);
-	write_io(HWREG_STAT, stat);
+void set_vram_bank(unsigned int bank) {
+	display.vram_bank = bank;
+	set_vector_block(MEM_VIDEO, display.vram + (display.vram_bank * 0x2000), SIZE_VIDEO);
 }
-#endif
-
-
-// what we must do:
-// check coincidence LY = LYC
-// generate interrupt on coincidence, oam, blank or hblank
-// set coincidence flag
-// set mode flags
 
 void display_update(unsigned int cycles) {
 	Byte ly, stat, lcdc;
@@ -459,12 +349,12 @@ Byte check_coincidence(Byte ly, Byte stat) {
 	if (ly == read_io(HWREG_LYC)) {
 		/* check that this a new coincidence */
 		if (!(stat & STAT_FLAG_COINCIDENCE)) {
-			stat |= STAT_FLAG_COINCIDENCE;	// set coincidence flag
+			stat |= STAT_FLAG_COINCIDENCE;	/* set coincidence flag */
 			if (stat & STAT_INT_COINCIDENCE)
 				raise_int(INT_STAT);
 		}
 	} else {
-		stat &= ~(STAT_FLAG_COINCIDENCE);	// unset coincidence flag	
+		stat &= ~(STAT_FLAG_COINCIDENCE);	/* unset coincidence flag */
 	}
 	return stat;
 }
@@ -505,11 +395,11 @@ static void draw_background(const Byte lcdc, const Byte ly, const int colour) {
 		if ((lcdc & 0x20) && (x_pos + 7 >= wx) && (ly >= wy))
 			continue;
 		if ((lcdc & 0x08) == 0) {
-			// tile map is at 0x9800-0x9BFF
-			tile_code = read_video_ram(TILE_MAP_0 + (tile_y * 32) + tile_x);
+			// tile map is at 0x9800-0x9BFF bank 0
+			tile_code = display.vram[TILE_MAP_0 - MEM_VIDEO + (tile_y * 32) + tile_x];
 		} else {
-			// tile map is at 0x9C00-0x9FFF
-			tile_code = read_video_ram(TILE_MAP_1 + (tile_y * 32) + tile_x);
+			// tile map is at 0x9C00-0x9FFF bank 0
+			tile_code = display.vram[TILE_MAP_1 - MEM_VIDEO + (tile_y * 32) + tile_x];
 		}
 		if ((lcdc & 0x10) == 0) {
 			// tile data is at 0x8800-0x97FF (indeces signed)
@@ -548,10 +438,10 @@ static void draw_window(const Byte lcdc, const Byte ly, const int colour) {
 			return;
         if ((lcdc & 0x40) == 0) {
             // tile map is at 0x9800-0x9BFF
-			tile_code = read_video_ram(TILE_MAP_0 + (tile_y * 32) + tile_x);
+			tile_code = display.vram[TILE_MAP_0 - MEM_VIDEO + (tile_y * 32) + tile_x];
         } else {
             // tile map is at 0x9C00-0x9FFF
-			tile_code = read_video_ram(TILE_MAP_1 + (tile_y * 32) + tile_x);
+			tile_code = display.vram[TILE_MAP_1 - MEM_VIDEO + (tile_y * 32) + tile_x];
         }
         if ((lcdc & 0x10) == 0) {
 		    // tile data is at 0x8800-0x97FF (indeces signed)
@@ -578,7 +468,6 @@ void draw_sprites(const Byte lcdc, const Byte ly, const int priority) {
 	int sprite_y;
 	int offset_y;
 	Byte sprite_priority;
-	
 	for (int sprite = 0; sprite < OAM_BLOCKS; sprite++) {
 		sprite_y = get_sprite_y(sprite) - (signed)16;
 		sprite_x = get_sprite_x(sprite) - (signed)8;
@@ -897,7 +786,6 @@ void sprite_blit(Sprite *sprite, SDL_Surface* surface, const int x, const int y,
 	SDL_BlitSurface(sprite->surface[flip], &src, surface, &dest);
 }
 
-
 void sprite_set_height(Sprite *sprite, int height) {
 	sprite->height = height;
 	for (int i = 0; i < 4; i++) {
@@ -911,14 +799,14 @@ void sprite_set_height(Sprite *sprite, int height) {
 void display_save() {
 	save_uint("display.cycles", display.cycles);
 	save_int("sheight", display.sprite_height);
-	save_memory("vram", display.video_ram, SIZE_VIDEO);
+	save_memory("vram", display.vram, SIZE_VIDEO);
 	save_memory("oam", display.oam, SIZE_OAM);
 }
 
 void display_load() {
 	display.cycles = load_uint("display.cycles");
 	display.sprite_height = load_int("sheight");
-	load_memory("vram", display.video_ram, SIZE_VIDEO);
+	load_memory("vram", display.vram, SIZE_VIDEO);
 	load_memory("oam", display.oam, SIZE_OAM);
 	
 	update_bg_palette();
@@ -929,11 +817,11 @@ void display_load() {
 		tile_invalidate(&display.tiles_tdt_0[i]);
 	}
 	for (int i = 0; i < TILES; i++) {
-		display.tiles_tdt_1[i].pixel_data = display.video_ram + (i * 16) + 0x0800;
+		display.tiles_tdt_1[i].pixel_data = display.vram + (i * 16) + 0x0800;
 		tile_invalidate(&display.tiles_tdt_1[i]);
 	}
 	for (int i = 0; i < SPRITES; i++) {
-		display.sprites[i].pixel_data = display.video_ram + (i * 16);
+		display.sprites[i].pixel_data = display.vram + (i * 16);
 		sprite_invalidate(&display.sprites[i]);
 	}
 	

@@ -1370,6 +1370,7 @@ int execute_cycles(int max_cycles) {
 				/* has a speed switch been requested? */
 				if ((read_io(HWREG_KEY1) & 0x01) && 
 						((console == GBC) || (console == GBA))) {
+				fprintf(stderr, "speed switch");
 					if (core.frequency == FREQ_NORMAL) {
 						core.frequency = FREQ_DOUBLE;
 						write_io(HWREG_KEY1, 0x80);
@@ -1710,6 +1711,9 @@ void core_reset() {
 	write_io(HWREG_WY, 		0x00);
 	write_io(HWREG_WX, 		0x00);
 	write_io(HWREG_IE, 		0x00);
+
+	write_io(HWREG_KEY1, 	0x00);
+	write_io(HWREG_SVBK, 	0x00);
 	
 	core.frequency = FREQ_NORMAL;
 }

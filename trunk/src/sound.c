@@ -45,7 +45,7 @@
 
 static char *lfsr_7;
 static char *lfsr_15;
-static double sample_rate = 44100;
+static double sample_rate = 22050;
 static PaStream *stream;
 static SoundData sound;
 
@@ -100,7 +100,7 @@ void sound_init() {
 	
 	PaError err;
 	PaStreamParameters output_parameters;
-	const PaDeviceInfo* pdi;
+	//const PaDeviceInfo* pdi;
 	
 	err = Pa_Initialize();
 	if (err != paNoError) {
@@ -109,8 +109,9 @@ void sound_init() {
 		exit(1);
     }
     
+    
 	output_parameters.device = Pa_GetDefaultOutputDevice();
-	pdi = Pa_GetDeviceInfo(output_parameters.device);
+	//pdi = Pa_GetDeviceInfo(output_parameters.device);
     output_parameters.channelCount = 2;
     output_parameters.hostApiSpecificStreamInfo = NULL;
     output_parameters.sampleFormat = paInt8;
@@ -141,18 +142,13 @@ void sound_init() {
 	sound.channel_4.is_on = 0;
 	sound.is_on = 0;
 	
-	err = Pa_StartStream(stream);
-    if (err != paNoError) {
-		Pa_Terminate();
-		fprintf(stderr, "could not start output stream: %s\n", Pa_GetErrorText(err));
-		exit(1);
-	}
-	
 }
 
 void sound_fini() {
 	PaError err;
-	err = Pa_StopStream(stream);
+	if (sound.is_on) {
+		stop_sound();
+	}
 	err = Pa_CloseStream(stream);
 
 	Pa_Terminate();
@@ -164,7 +160,7 @@ void sound_fini() {
 void stop_sound() {
 	PaError err;
 	assert(sound.is_on);
-	err = Pa_StopStream(stream);	
+	err = Pa_StopStream(stream);
 	sound.is_on = 0;
 }
 
@@ -182,13 +178,35 @@ void start_sound() {
 
 // fill with sensible defaults...
 void sound_reset() {
-	sound.volume_left = 7;
+	sound.volume_left = 7; // FIXME
 	sound.volume_right = 7;
-	sound.is_on = 1;
+	
+	write_sound(HWREG_NR10,	0x80);
+	write_sound(HWREG_NR11,	0xBF);
+	write_sound(HWREG_NR12,	0xF3);
+	write_sound(HWREG_NR14,	0xBF);
+	write_sound(HWREG_NR21,	0x3F);
+	write_sound(HWREG_NR22,	0x00);
+	write_sound(HWREG_NR24,	0xBF);
+	write_sound(HWREG_NR30,	0x7F);
+	write_sound(HWREG_NR31,	0xFF);
+	write_sound(HWREG_NR32,	0x9F);
+	write_sound(HWREG_NR33,	0xBF);
+	write_sound(HWREG_NR41,	0xFF);
+	write_sound(HWREG_NR42,	0x00);
+	write_sound(HWREG_NR43,	0x00);
+	write_sound(HWREG_NR44,	0xBF);
+	write_sound(HWREG_NR50,	0x77);
+	write_sound(HWREG_NR51,	0xF3);
+	write_sound(HWREG_NR52,	0xF1); // TODO DIFFERENT FOR SGB
 	sound.channel_1.is_on = 0;
 	sound.channel_2.is_on = 0;
 	sound.channel_3.is_on = 0;
 	sound.channel_4.is_on = 0;
+
+	if (!sound.is_on) {
+		start_sound();
+	}
 }
 
 void write_sound(Word address, Byte value) {
@@ -330,6 +348,7 @@ void write_sound(Word address, Byte value) {
 			frequency = (unsigned int)read_io(HWREG_NR33) | ((unsigned int)(value & 0x07) << 8);
 			sound.channel_3.period = frequency_to_period(65536 / (float)(2048 - frequency));
 			if (value & 0x80) {
+				fprintf(stderr, "TRIGGER3\n");
 				mark_channel_on(3);
 				sound.channel_3.is_on = 1;
 				sound.channel_3.i = 0;
@@ -386,7 +405,7 @@ void write_sound(Word address, Byte value) {
 			sound.volume_right = (value & 0x70) >> 4;
 			break;
 		case HWREG_NR52:	// turn off sound
-			sound.is_on =  (value & 0x80) ? 1 : 0;
+			//sound.is_on =  (value & 0x80) ? 1 : 0; /*FIXME*/
 			break;
 		case HWREG_NR51:	/* output terminal selection */
 			sound.channel_4.is_on_right = (value & 0x80) ? 1 : 0;
@@ -440,12 +459,14 @@ static inline void mark_channel_on(unsigned int channel) {
 
 /* updates NR52 with the channel status (OFF) */
 static inline void mark_channel_off(unsigned int channel) {
+	fprintf(stderr, "channel: %u\tbefore: %hhx\t", channel, read_io(HWREG_NR52));
 	write_io(HWREG_NR52, read_io(HWREG_NR52) & ~(0x01 << ((unsigned char)channel - 1)));
+	fprintf(stderr, "after: %hhx\n", read_io(HWREG_NR52));
 }
 
 /*
  * portaudio sound callback. portaudio calls this whenever its sound buffer
- * needs refilling. to maintain portability, avoid wierd function calls.
+ * needs refilling. to maintain portability, avoid weird function calls.
  * this function should be kept efficient, as the for loop must iterate
  * a number of times equal to the sample rate every second.
  */
@@ -472,7 +493,7 @@ static int call_back(const void *input_buffer, void *output_buffer,
 		 	right[j] = GROUND;
 		 }
 		
-		// Channel 1 ===========================================================
+		// Channel 1 ===================================================
 		if (data->channel_1.is_on) {
 			// generate square wave
 			if (data->channel_1.i < (data->channel_1.period * data->channel_1.duty)) {
@@ -540,7 +561,7 @@ static int call_back(const void *input_buffer, void *output_buffer,
 			}
 		}
 
-		// Channel 2 ===========================================================
+		// Channel 2 ===================================================
 		if (data->channel_2.is_on) {
 			// generate square wave
 			if (data->channel_2.i < (data->channel_2.period * data->channel_2.duty)) {
@@ -582,7 +603,7 @@ static int call_back(const void *input_buffer, void *output_buffer,
 			}
 		}
 		
-		// Channel 3 ===========================================================
+		// Channel 3 ===================================================
 		if (data->channel_3.is_on) {
 			// output arbitrary wave data
 			if (data->channel_3.volume != 255) {
@@ -591,8 +612,6 @@ static int call_back(const void *input_buffer, void *output_buffer,
 				if (data->channel_3.is_on_right)		
 					right[2] = (data->channel_3.samples[(data->channel_3.i * 32) / data->channel_3.period]) >> data->channel_3.volume;
 			}
-			
-			//printf("r/v: %hhd / %hhd\n", left[2], right[2]);
 			++data->channel_3.i;
 			// if the waveform has reached its period, restart it
 			if (data->channel_3.i >= data->channel_3.period) {
@@ -609,7 +628,7 @@ static int call_back(const void *input_buffer, void *output_buffer,
 			}
 		}
 
-		// Channel 4 ===========================================================
+		// Channel 4 ===================================================
 		if (data->channel_4.is_on) {
 			// output noise
 			if (data->channel_4.counter == LFSR_7) {

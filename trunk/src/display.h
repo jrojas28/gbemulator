@@ -100,7 +100,7 @@ typedef struct {
 
 	unsigned int x_res, y_res, bpp;
 	unsigned int cycles;
-	Byte *video_ram;
+	Byte *vram;
 	Byte *oam;
 	Uint32 palette_bg[4];
 	Uint32 palette_sprite_0[4];
@@ -109,7 +109,7 @@ typedef struct {
 	struct tile* tiles_tdt_0;
 	struct tile* tiles_tdt_1;
 	struct sprite* sprites;
-	//Byte last_lcdc;
+	unsigned int vram_bank;
 } Display;
 
 typedef struct tile {
@@ -140,15 +140,17 @@ Byte check_coincidence(Byte ly, Byte stat);
 void launch_dma(Byte address);
 void display_save();
 void display_load();
+void set_vram_bank(unsigned int bank);
 
-static inline void write_video_ram(Word address, Byte value);
-static inline Byte read_video_ram(Word address);
+static inline void write_vram(Word address, Byte value);
+static inline Byte read_vram(Word address);
 static inline void write_oam(Word address, Byte value);
 static inline Byte read_oam(Word address);
 static inline void tile_invalidate(Tile *tile);
 static inline void sprite_invalidate(Sprite *sprite);
 
-static inline void write_video_ram(const Word address, const Byte value) {
+
+static inline void write_vram(const Word address, const Byte value) {
 	extern Display display;
 	// NO else here, tile data tables overlap!
 	if ((address >= TDT_0) && (address < (TDT_0 + TDT_0_LEN))) {
@@ -158,17 +160,17 @@ static inline void write_video_ram(const Word address, const Byte value) {
 
 	if ((address >= TDT_1) && (address < (TDT_1 + TDT_1_LEN)))
 		tile_invalidate(&display.tiles_tdt_1[(address - TDT_1) >> 4]);
-    display.video_ram[address - MEM_VIDEO] = value;
+    display.vram[address - MEM_VIDEO + (display.vram_bank * 0x2000)] = value;
 }
 
-static inline Byte read_video_ram(const Word address) {
+static inline Byte read_vram(const Word address) {
 	extern Display display;
-	return display.video_ram[address - MEM_VIDEO];
+	return display.vram[address - MEM_VIDEO + (display.vram_bank * 0x2000)];
 }
 
 static inline void write_oam(const Word address, const Byte value) {
 	extern Display display;	
-    display.video_ram[address - MEM_OAM] = value;
+    display.vram[address - MEM_OAM] = value;
 }
 
 static inline Byte read_oam(const Word address) {
@@ -185,6 +187,5 @@ static inline void sprite_invalidate(Sprite *sprite) {
 static inline void tile_invalidate(Tile *tile) {
 	tile->is_invalidated = 1;
 }
-
 
 #endif	//_DISPLAY_H

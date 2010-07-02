@@ -37,27 +37,44 @@
 #define ADDRESS_SPACE		0x10000
 #define VT_ENTRIES 			(ADDRESS_SPACE / VT_GRANULARITY)
 #define VT_SIZE 			(VT_ENTRIES * sizeof(Byte*))
-#define SIZE_HIMEM 			(SIZE_IO + SIZE_INTERNAL_1 + SIZE_EMPTY_UNUSABLE_1)
+#define SIZE_HIMEM 			(SIZE_IO + SIZE_INTERNAL_1)
 
 Byte *internal0 = NULL;
 Byte** vector_table = NULL;
 Byte* himem = NULL;
 
+unsigned int iram_bank = 1;
+
+extern enum Console console;
+extern enum ConsoleMode console_mode;
+
 unsigned mem_map[256];
 
 void memory_init() {
-	internal0 = malloc(sizeof(Byte) * SIZE_INTERNAL_0);
 	himem = malloc (sizeof(Byte) * SIZE_HIMEM);
 	vector_table = malloc(sizeof(Byte*) * VT_ENTRIES);
 }
 
 void memory_reset() {
+	if (internal0 != NULL)
+		free(internal0);
+	if ((console == GBC) || (console == GBA)) {
+		internal0 = malloc(sizeof(Byte) * IMEM_SIZE_GBC);
+		memset(internal0, 0, IMEM_SIZE_GBC);
+	} else {
+		internal0 = malloc(sizeof(Byte) * IMEM_SIZE_DMG);
+		memset(internal0, 0, IMEM_SIZE_DMG);
+	}
+
 	memset(vector_table, 0, VT_SIZE);
-	memset(internal0, 0, SIZE_INTERNAL_0);
 	memset(himem, 0, SIZE_HIMEM);
 
+	iram_bank = 1;
+
 	set_vector_block(MEM_INTERNAL_0, internal0, SIZE_INTERNAL_0);
-	set_vector_block(MEM_INTERNAL_ECHO, internal0, SIZE_INTERNAL_ECHO);
+	set_vector_block(MEM_INTERNAL_SW, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_SW);
+	set_vector_block(MEM_INTERNAL_ECHO, internal0, SIZE_INTERNAL_0);
+	set_vector_block(MEM_INTERNAL_ECHO + SIZE_INTERNAL_0, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_ECHO - SIZE_INTERNAL_0);
 	set_vector_block(MEM_IO, himem, SIZE_HIMEM);
 }
 
@@ -74,7 +91,7 @@ void writeb(Word address, Byte value) {
 	}
 	// video ram area
 	else if (address < MEM_VIDEO + SIZE_VIDEO) {
-		write_video_ram(address, value);
+		write_vram(address, value);
 		return;
 	}
 	// cartridge ram area
@@ -87,9 +104,18 @@ void writeb(Word address, Byte value) {
 		internal0[address - MEM_INTERNAL_0] = value;
 		return;
 	}
+	// internal ram area switchable
+	else if (address < MEM_INTERNAL_SW + SIZE_INTERNAL_SW) {
+		internal0[(iram_bank * 0x1000) + address - MEM_INTERNAL_SW] = value;
+		return;
+	}	
 	// echo of internal ram area 0
 	else if (address < MEM_INTERNAL_ECHO + SIZE_INTERNAL_ECHO) {
-		internal0[address - MEM_INTERNAL_ECHO] = value;
+		fprintf(stderr, "ECHO %hx\n", address);
+		if (address < MEM_INTERNAL_ECHO + SIZE_INTERNAL_0)
+			internal0[address - MEM_INTERNAL_ECHO] = value;
+		else
+			internal0[(iram_bank * 0x1000) + address - MEM_INTERNAL_ECHO - SIZE_INTERNAL_0] = value;
 		return;
 	}
 	// sprite attrib (oam) ram
@@ -104,6 +130,8 @@ void writeb(Word address, Byte value) {
 	}
 	// i/o memory
 	else if (address < MEM_IO + SIZE_IO) {
+	if (address == HWREG_KEY1)
+		fprintf(stderr, "KEY1: VALUE: %hhx\n", value);
 		switch (address) {
         /* the bottom 3 bits of STAT are read only.	*/
 			case HWREG_STAT:
@@ -116,9 +144,13 @@ void writeb(Word address, Byte value) {
 				himem[address - MEM_IO] = (himem[address - MEM_IO] & 0x80) | (value & 0x7f);
 				return;
                 break;
+			case HWREG_NR52:
+				himem[address - MEM_IO] = (himem[address - MEM_IO] & 0x0f) | (value & 0x80);
+				break;
+			default:
+				himem[address - MEM_IO] = value;
 		}
 
-		himem[address - MEM_IO] = value;
 		if ((address >= 0xff10) && (address < 0xff30)) {
 			write_sound(address, value);
 			return;
@@ -127,6 +159,7 @@ void writeb(Word address, Byte value) {
 			write_wave(address, value);
 			return;
 		}
+
 
 		switch(address) {
 			case HWREG_DIV:
@@ -152,15 +185,25 @@ void writeb(Word address, Byte value) {
 			case HWREG_LYC:
 				write_io(HWREG_STAT, check_coincidence(read_io(HWREG_LY), read_io(HWREG_STAT)));
 				break;
+			case HWREG_SVBK:
+				/* adjust internal ram bank in gameboy color mode */
+				if (((console == GBC) || (console == GBA)) && (console_mode == GBC_ENABLED)) {
+					iram_bank = value & 0x07;
+					if (iram_bank == 0)
+						iram_bank = 1;
+				}
+				set_vector_block(MEM_INTERNAL_SW, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_SW);
+				set_vector_block(MEM_INTERNAL_ECHO + SIZE_INTERNAL_0, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_ECHO - SIZE_INTERNAL_0);
+				//fprintf(stderr, "iram_bank %u\n", iram_bank);
+				break;
+			case HWREG_VBK:
+				/* adjust vram bank */
+				set_vram_bank(value & 0x01);
+				//fprintf(stderr, "vram_bank %hhx ", value & 0x01);
+			break;
 		}
 		return;
 
-	}
-
-	// unusable memory
-	else if (address < MEM_INTERNAL_1) {
-		//printf("Bad memory write to unusable location (%hx)!\n", address);
-		return;
 	}
 	// internal ram area 1
 	else {

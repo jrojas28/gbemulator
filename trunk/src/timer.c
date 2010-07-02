@@ -32,10 +32,6 @@
 static unsigned int tima_time;
 static unsigned int div_time;
 
-//static const unsigned int tima_periods[] = {1000000000/4096, 1000000000/262144, 
-	                                        //1000000000/65536, 1000000000/16384};
-
-
 // periods for each tima setting, in machine cycles
 static const unsigned int tima_periods[] = {1024, 16, 64, 256};
 

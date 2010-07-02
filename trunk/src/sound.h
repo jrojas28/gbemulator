@@ -128,6 +128,7 @@ void stop_sound();
 void start_sound();
 void sound_save();
 void sound_load();
+void sound_reset();
 
 #endif /* _SOUND_H */
 

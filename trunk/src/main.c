@@ -49,8 +49,9 @@
 #define TIMING_INTERVAL		(1000000000 / TIMING_GRANULARITY)
 #define MAX_CPU_CYCLES		200
 
-enum Console console = DMG;
-enum ConsoleMode console_mode;
+enum Console console = AUTO;
+enum ConsoleMode console_mode = DMG_EMU;
+
 extern CoreState core;
 
 void reset();
@@ -100,7 +101,7 @@ int main (int argc, char *argv[]) {
 		if ((!is_delayed) && (!is_paused)) {
 			for (int i = 0; i < 10; i++) {
 				cycles = execute_cycles(200);
-				core_period = (cycles >> 2) * (1000000000/(1048576 * core.frequency));
+				core_period = (cycles >> 2) * (1000000000/(1048576));
 				core_time += core_period;
 				timer_check(cycles * core.frequency);
 				display_update(cycles);
@@ -180,6 +181,7 @@ void reset() {
 	core_reset();
 	display_reset();
 	timer_reset();
+	sound_reset();
 }
 
 void quit() {

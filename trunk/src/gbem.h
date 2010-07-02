@@ -68,14 +68,18 @@ union UWord {
 #define SIZE_ROM_BANK_SW			0x4000
 #define SIZE_VIDEO					0x2000
 #define SIZE_RAM_BANK_SW			0x2000
-#define SIZE_INTERNAL_0				0x2000
+#define SIZE_INTERNAL_0				0x1000
 #define SIZE_INTERNAL_SW			0x1000
 #define SIZE_INTERNAL_ECHO			0x1E00
 #define SIZE_OAM					0x00A0
 #define SIZE_EMPTY_UNUSABLE_0		0x0060
-#define SIZE_IO						0x004C
-#define SIZE_EMPTY_UNUSABLE_1		0x0034
+#define SIZE_IO						0x0080
 #define SIZE_INTERNAL_1				0x0080
+
+#define IMEM_SIZE_DMG				0x2000
+#define IMEM_SIZE_GBC				0x8000
+#define VRAM_SIZE_DMG				0x2000
+#define VRAM_SIZE_GBC				0x4000
 
 #define HWREG_P1				0xFF00
 #define HWREG_SB				0xFF01
@@ -119,6 +123,7 @@ union UWord {
 #define HWREG_WY				0xFF4A
 #define HWREG_WX				0xFF4B
 #define HWREG_KEY1				0xFF4D
+#define HWREG_VBK				0xFF4F
 #define HWREG_RP				0xFF56
 #define HWREG_SVBK				0xFF70
 #define HWREG_IE				0xFFFF
@@ -130,7 +135,7 @@ union UWord {
 #define MEM_INT_BUTTON				0x0060
 
 enum Console {DMG, POCKET, GBC, SGB, GBA, AUTO};
-enum ConsoleMode {NORMAL, DMG_EMU, GBC_ENABLED};
+enum ConsoleMode {DMG_EMU, GBC_ENABLED};
 
 #endif /* _GBEM_H */
 
