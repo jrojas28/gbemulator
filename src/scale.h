@@ -30,5 +30,4 @@
 void scale_nn(SDL_Surface *src, SDL_Surface *dest);
 void scale_nn2x(SDL_Surface* restrict src, SDL_Surface* restrict dest);
 
-
 #endif /* _SCALE_H */

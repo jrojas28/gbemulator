@@ -49,6 +49,7 @@ static const Byte sg_data[] ="\xce\xed\x66\x66\xcc\x0d\x00\x0b\x03\x73\x00\x83"
                              "\x6e\x0e\xec\xcc\xdd\xdc\x99\x9f\xbb\xb9\x33\x3e";
 
 extern enum Console console;
+extern enum ConsoleMode console_mode;
 
 int load_rom(const char* fn) {
 	struct stat fstats;
@@ -113,33 +114,29 @@ int load_rom(const char* fn) {
 	strncpy(cart.rom_title, (char *)cart.rom + CART_ROM_TITLE, rom_title_length);
 	cart.rom_title[rom_title_length] = '\0';
 	printf("\ttitle: %s", cart.rom_title);
-	// detect colour gameboy cartridge
 
+	/* detect colour gameboy cartridge */
 	switch (cart.rom[CART_COLOR]) {
 		case 0x80:
 			if (console == AUTO)
 				console = GBC;
+			if ((console == GBC) || (console == GBA))
+				console_mode = GBC_ENABLED;
 			break;
 		case 0xC0:
 			if (console == AUTO)
 				console = GBC;
+			if ((console == GBC) || (console == GBA))
+				console_mode = GBC_ENABLED;
 			break;
 		default:
 			if (console == AUTO)
 				console = DMG;
+			if ((console == GBC) || (console == GBA))
+				console_mode = DMG_EMU;
 			break;
 	}
 	
-	if (cart.rom[CART_COLOR] == 0x80) {
-		cart.is_for_cgb = 1;
-		
-		//printf("invalid rom: color gb unimplemented\n");
-		//free(cart.rom);
-		//free(cart.rom_title);
-		//return -1;	
-	}
-	else
-		cart.is_for_cgb = 0;
 	// TODO: check licensee codes?
 	if (cart.rom[CART_SGB_FUNC] == 0x03)
 		cart.is_for_sgb = 1;
@@ -312,9 +309,8 @@ int load_rom(const char* fn) {
 			cart.rom_banks = 96;
 			break;
 		default:
-			//cart.rom_size = 32 * 1024;
 			cart.rom_banks = cart.rom_size / 0x4000;
-			printf("unrecognised rom size... assuming %dB and continuing anyway...\n", cart.rom_size);
+			printf("unrecognised rom size... assuming %uB and continuing anyway...\n", cart.rom_size);
 			break;
 	}
 	// TODO: checksum / complement check test
@@ -507,23 +503,30 @@ void write_rom(Word address, Byte value) {
 		}
 		// mbc5 rom bank selection
 		if ((address >= 0x2000) && (address < 0x3000)) {
-			cart.rom_bank = (cart.rom_bank & !0xff) | value;
+			//fprintf(stderr, "LOW: before: %x", cart.rom_bank);
+			cart.rom_bank = (cart.rom_bank & (~0xff)) | value;
 			if (cart.rom_bank == 0)
 				cart.rom_bank = 1;
+			//fprintf(stderr, "\tafter: %x", cart.rom_bank);
+			//fprintf(stderr, "\tvalue: %hhx\n", value);
 			set_switchable_rom();
 			return;
 		}
 		if ((address >= 0x3000) && (address < 0x4000)) {
+			fprintf(stderr, "HIGH: before: %x", cart.rom_bank);
 			cart.rom_bank = (cart.rom_bank & 0xff) | ((value & 0x01) << 8);
 			if (cart.rom_bank == 0)
 				cart.rom_bank = 1;
+			fprintf(stderr, "\tafter: %x", cart.rom_bank);
+			fprintf(stderr, "\tvalue: %hhx\n", value);
 			set_switchable_rom();
 			return;
 		}
 
 		// mbc5 ram bank selection
 			if ((address >= 0x4000) && (address < 0x6000)) {
-			cart.ram_bank = value & 0x07;
+			cart.ram_bank = value & 0x0f;
+			fprintf(stderr, "ram bank: %x\n", cart.ram_bank);
 			set_switchable_ram();
 			return;
 		}
