@@ -124,6 +124,11 @@ union UWord {
 #define HWREG_WX				0xFF4B
 #define HWREG_KEY1				0xFF4D
 #define HWREG_VBK				0xFF4F
+#define HWREG_HDMA1				0xFF51
+#define HWREG_HDMA2				0xFF52
+#define HWREG_HDMA3				0xFF53
+#define HWREG_HDMA4				0xFF54
+#define HWREG_HDMA5				0xFF55
 #define HWREG_RP				0xFF56
 #define HWREG_SVBK				0xFF70
 #define HWREG_IE				0xFFFF

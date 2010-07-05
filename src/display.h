@@ -110,6 +110,7 @@ typedef struct {
 	struct tile* tiles_tdt_1;
 	struct sprite* sprites;
 	unsigned int vram_bank;
+	unsigned int is_gbc_dma_active;
 } Display;
 
 typedef struct tile {
@@ -157,7 +158,6 @@ static inline void write_vram(const Word address, const Byte value) {
 		tile_invalidate(&display.tiles_tdt_0[(address - TDT_0) >> 4]);
 		sprite_invalidate(&display.sprites[(address - TDT_0) >> 4]);
 	}
-
 	if ((address >= TDT_1) && (address < (TDT_1 + TDT_1_LEN)))
 		tile_invalidate(&display.tiles_tdt_1[(address - TDT_1) >> 4]);
     display.vram[address - MEM_VIDEO + (display.vram_bank * 0x2000)] = value;
