@@ -1714,6 +1714,7 @@ void core_reset() {
 
 	write_io(HWREG_KEY1, 	0x00);
 	write_io(HWREG_SVBK, 	0x00);
+	write_io(HWREG_HDMA5, 	0x80);
 	
 	core.frequency = FREQ_NORMAL;
 }

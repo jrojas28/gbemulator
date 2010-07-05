@@ -566,12 +566,35 @@ static inline Byte get_sprite_flags(const unsigned int sprite) {
 	return display.oam[(OAM_BLOCK_SIZE * sprite) + OAM_FLAGS];
 }
 
-
-
 void launch_dma(Byte address) {
 	Word real_address = address * 0x100;
 	for (unsigned int i = 0; i < SIZE_OAM; i++) {
 		display.oam[i] = readb(real_address + i);
+	}
+}
+
+void launch_hdma(unsigned length) {
+	Word src = (read_io(HWREG_HDMA2) & 0xf0) + (read_io(HWREG_HDMA1) << 8);
+	Word dest = (read_io(HWREG_HDMA4) & 0xf0) + ((read_io(HWREG_HDMA3) & 0x1f) << 8);
+	assert(length <= 0x800);
+	int i;
+	if ((src <= 0x7ff0) || ((src >= 0x8000) && (src <= 0x9ff0))) {
+		for (i = 0; i < length; i++)
+			write_vram(dest + MEM_VIDEO + i, readb(src + 1));
+	} else {
+		fprintf(stderr, "hdma src/dest invalid. src: %hx dest: %hx\n", src, dest);
+	}
+	
+}
+
+void start_hdma(Byte hdma5) {
+	if (hdma5 & 0x80) {
+		/* hblank dma */
+		write_io(HWREG_HDMA5, read_io(HWREG_HDMA5) & (~0x80));
+	} else {
+		/* general dma */
+		launch_hdma(((hdma5 & 0x7f) + 1) * 0x10);
+		write_io(HWREG_HDMA5, 0xFF);
 	}
 }
 
