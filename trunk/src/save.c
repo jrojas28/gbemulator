@@ -36,6 +36,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdint.h>
+#include "gbem.h"
 #include "save.h"
 #include "cart.h"
 #include "core.h"
@@ -45,12 +46,17 @@
 
 #define NO_MATCH	-1
 
-static char* get_fn();
+static char* get_fn(void);
 static int get_index(char* key);
 
-static char* encode_base64(unsigned char* raw, unsigned int c);
-static void decode_base64(char* enc, unsigned char* raw, unsigned int count);
+static char* encode_base64(unsigned char* raw, int c);
+static void decode_base64(char* enc, unsigned char* raw, int count);
 static char base64_lookup(char c);
+
+/* if we dont have getline() we will use our own */
+#ifndef HAVE_GETLINE
+static size_t getline (char **lineptr, size_t *n, FILE *stream);
+#endif
 
 unsigned int save_slot = 0;
 static unsigned int err = 0;
@@ -59,9 +65,9 @@ static FILE* fp = NULL;
 
 static char** keys = NULL;
 static char** values = NULL;
-static unsigned int entries;
+static int entries;
 
-void save_state() {
+void save_state(void) {
 	char* fn;
 	fn = get_fn();
 	fp = fopen(fn, "w");
@@ -83,7 +89,7 @@ void save_state() {
 	free(fn);
 }
 
-void load_state() {
+void load_state(void) {
 	int i;
 	char* fn;
 	char* separator;
@@ -91,10 +97,10 @@ void load_state() {
 	char* newline;
 	char* key;
 	char* value;
-	size_t line_len;
+	char* line = NULL;
+	size_t line_len = 0;
 	fn = get_fn();
 	fp = fopen(fn, "r");
-	char* line = NULL;
 	if (fp == NULL) {
 		fprintf(stderr, "could not open state file for reading: %s\n", fn);
 		perror("fopen");
@@ -273,7 +279,7 @@ static int get_index(char* key) {
  * uses the rom title, and save slot number.
  * returns a pointer to a dynamically allocated string, which must be free()'d.
  */
-static char* get_fn() {
+static char* get_fn(void) {
 	extern Cart cart;
 	char *fn;
 	unsigned int fn_len;
@@ -304,7 +310,7 @@ static void check_write_error(size_t c, unsigned int count) {
 static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 static const char pad = '=';
 
-static char* encode_base64(unsigned char* raw, unsigned int c) {
+static char* encode_base64(unsigned char* raw, int c) {
 	int i, j;
 	int enc_len;
 	char* enc;
@@ -399,3 +405,30 @@ static char base64_lookup(char c) {
 		return PADDING;
 	return INVALID;
 }
+
+#ifndef HAVE_GETLINE
+#define BUFFER_BLOCK 64
+static size_t getline (char ** const lineptr, size_t * const n, FILE * const stream) {
+	int c;
+	char* buffer;
+	size_t size;
+	size_t length = 0;
+	if (*lineptr == NULL) {
+		*lineptr = malloc(BUFFER_BLOCK * sizeof(char));
+		size = BUFFER_BLOCK;
+	} else {
+		buffer = *lineptr;
+		size = *n;
+	}
+	while (c = fgetc(stream) != EOF) {
+		++length;
+		if (length == (size - 1)) {
+			size += BUFFER_BLOCK;
+			buffer = realloc(buffer, size);
+		}
+		buffer[length] = (char)c;
+		fprintf(stderr, "%c", (char)c);
+	}
+	return length;
+}
+#endif

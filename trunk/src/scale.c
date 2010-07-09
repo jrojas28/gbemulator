@@ -38,10 +38,10 @@ static inline void put_pixel(const SDL_Surface *surface, const int x, const int 
 const unsigned int bpp = 4;
 
 void scale_nn(SDL_Surface* restrict src, SDL_Surface* restrict dest) {
-	int px, py;
+	int px, py, y, x;
 	int pixel;
-	for (int y = 0; y < dest->h; y++) {
-		for (int x = 0; x < dest->w; x++) {
+	for (y = 0; y < dest->h; y++) {
+		for (x = 0; x < dest->w; x++) {
 			px = x * src->w / dest->w;
 			py = y * src->h / dest->h;
 			pixel = get_pixel(src, px, py);
@@ -75,11 +75,12 @@ void scale_nn2x(SDL_Surface* restrict src, SDL_Surface* restrict dest) {
 	Uint8 * restrict p_dest;
 	Uint8 * restrict p_dest2;
 	Uint32 pixel;
-	for (int y = 0; y < src->h; y++) {
+	int y, x;
+	for (y = 0; y < src->h; y++) {
 		p_src = (Uint8 *)src->pixels + (src->pitch * y);
 		p_dest = (Uint8 *)dest->pixels + (dest->pitch * y * 2);
 		p_dest2 = (Uint8 *)dest->pixels + dest->pitch * ((y * 2) + 1);
-		for (int x = 0; x < src->w; x++) {
+		for (x = 0; x < src->w; x++) {
 			pixel = *(Uint32 *)p_src;
 			*(Uint32 *)(p_dest) = pixel;
 			*(Uint32 *)(p_dest + bpp) = pixel;

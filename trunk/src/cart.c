@@ -33,11 +33,11 @@
 #include "memory.h"
 #include "save.h"
 
-static void set_switchable_rom();
-static void set_switchable_ram();
-static void save_sram();
-static int find_sram_file();
-static void load_sram();
+static void set_switchable_rom(void);
+static void set_switchable_ram(void);
+static void save_sram(void);
+static int find_sram_file(void);
+static void load_sram(void);
 
 static const char ram_ext[] = ".sav";
 
@@ -52,6 +52,9 @@ extern enum Console console;
 extern enum ConsoleMode console_mode;
 
 int load_rom(const char* fn) {
+	int i;
+	size_t c;
+	int title_len;
 	struct stat fstats;
 	FILE *rom_file;
 	// check that rom is not already loaded
@@ -61,14 +64,14 @@ int load_rom(const char* fn) {
 	if (stat(fn, &fstats) == 0)
 		cart.rom_size = fstats.st_size;
 	else {
-		printf("rom loading failed.\n");
+		fprintf(stderr, "rom loading failed.\n");
 		perror("stat");
 		return -1;
 	}
 
 	// no roms will be smaller than 32kB. 
 	if (cart.rom_size < 32 * 1024) {
-		printf("rom error: roms cannot be smaller than 32kB\n");
+		fprintf(stderr, "rom error: roms cannot be smaller than 32kB\n");
 		return -1;
 	}
 	
@@ -80,39 +83,40 @@ int load_rom(const char* fn) {
 
 	// load rom into memory
 	cart.rom = malloc(cart.rom_size);
-	rom_file = fopen(fn, "r");
+	rom_file = fopen(fn, "rb");
 	if (rom_file == NULL) {
-		printf("rom loading failed.\n");
+		fprintf(stderr, "rom loading failed.\n");
 		perror("fopen");
 		return -1;
 	}
 	
-	if (fread(cart.rom, 1, cart.rom_size, rom_file) != cart.rom_size) {
-		printf("file read error.\n");
+	c = fread(cart.rom, 1, cart.rom_size, rom_file);
+	if (c != cart.rom_size) {
+		fprintf(stderr, "file read error: %u of %u bytes read\n", c, cart.rom_size);
 		perror("fread");
 		return -1;
 	}
 	
 	fclose(rom_file);
 	// test if rom is valid, by checking the scrolling graphic data
-	for (int i = 0; i < CART_ROM_TITLE - CART_SG_DATA; ++i) {
+	for (i = 0; i < CART_ROM_TITLE - CART_SG_DATA; ++i) {
 		if (cart.rom[CART_SG_DATA + i] != sg_data[i]) {
-			printf("invalid rom: scrolling graphic mismatch\n");
+			fprintf(stderr, "invalid rom: scrolling graphic mismatch\n");
 			free(cart.rom);
 			return -1;
 		}
 	}
 	// check and get rom title
-	int rom_title_length;
 	printf("rom %s loaded (%u bytes)\n", fn, cart.rom_size);
-	if ((rom_title_length = strnlen((char *)cart.rom + CART_ROM_TITLE, 17)) == 17) {
-		printf("invalid rom: title too long (>16 characters)\n");
+	title_len = strlen((char *)cart.rom + CART_ROM_TITLE);
+	if (title_len > 17) {
+		fprintf(stderr, "invalid rom: title too long (>16 characters)\n");
 		//free(cart.rom);
 		//return -1;
 	}
-	cart.rom_title = malloc (rom_title_length + 1);
-	strncpy(cart.rom_title, (char *)cart.rom + CART_ROM_TITLE, rom_title_length);
-	cart.rom_title[rom_title_length] = '\0';
+	cart.rom_title = malloc (title_len + 1);
+	strncpy(cart.rom_title, (char *)cart.rom + CART_ROM_TITLE, title_len);
+	cart.rom_title[title_len] = '\0';
 	printf("\ttitle: %s", cart.rom_title);
 
 	/* detect colour gameboy cartridge */
@@ -349,7 +353,7 @@ int load_rom(const char* fn) {
 
 
 
-void cart_reset() {
+void cart_reset(void) {
 	// cant reset a nonloaded cartridge
 	assert(cart.is_loaded == 1);
 	// set up some defaults
@@ -365,7 +369,7 @@ void cart_reset() {
 	set_switchable_ram();
 }
 
-void unload_rom() {
+void unload_rom(void) {
 	// check that rom is already loaded
 	assert(cart.is_loaded == 1);
 	if (cart.ram_size > 0)
@@ -382,13 +386,13 @@ void unload_rom() {
 }
 
 
-static void set_switchable_rom() {
+static void set_switchable_rom(void) {
 	//mem.setRomSw(rom_ + (romBank_ * 0x4000) + (cart.rom_block * 0x80000));
 	set_vector_block(MEM_ROM_BANK_SW, cart.rom + (cart.rom_bank * 0x4000) + 
 						(cart.rom_block * 0x80000), SIZE_ROM_BANK_SW);
 }
 
-static void set_switchable_ram() {
+static void set_switchable_ram(void) {
 	//mem.setExtRamSw(ram_ + (cart.ram_bank * 0x4000));
 	set_vector_block(MEM_RAM_BANK_SW, cart.ram + (cart.ram_bank * 0x2000), 
 						SIZE_RAM_BANK_SW);
@@ -559,7 +563,7 @@ Byte read_rom(Word address) {
  * saves the state of the ram to a file. 
  * TODO: place the sram file somewhere intelligent
  */
-static void save_sram() {
+static void save_sram(void) {
 	char *fn;
 	FILE *fp;
 	size_t c;
@@ -589,7 +593,7 @@ static void save_sram() {
 /*
  * searches for an sram files. returns 1 if found, otherwise 0.
  */
-int find_sram_file() {
+int find_sram_file(void) {
 	char *fn;
 	struct stat fstats;
 	fn = malloc(strlen(cart.rom_fn) + strlen(ram_ext) + 1);
@@ -605,7 +609,7 @@ int find_sram_file() {
 		return 0;
 }
 
-static void load_sram() {
+static void load_sram(void) {
 	char *fn;
 	FILE *fp;
 	size_t c;
@@ -632,7 +636,7 @@ static void load_sram() {
 	free(fn);	
 }
 
-void cart_save() {
+void cart_save(void) {
 	if (cart.ram_size > 0)
 		save_memory("cram", cart.ram, cart.ram_size);
 	save_uint("rom_bank", cart.rom_bank);
@@ -641,7 +645,7 @@ void cart_save() {
 	save_uint("mbc_mode", cart.mbc_mode);
 }
 
-void cart_load() {
+void cart_load(void) {
 	if (cart.ram_size > 0)
 		load_memory("cram", cart.ram, cart.ram_size);
 	cart.rom_bank = load_uint("rom_bank");

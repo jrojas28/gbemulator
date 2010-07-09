@@ -23,13 +23,21 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
  
-#include <stdint.h>
-#include "config.h"
-
 #ifndef _GBEM_H
 #define _GBEM_H
+
+#include <stdint.h>
+
+#ifndef _MSC_VER
+#include "config.h"
+#else
+#include "windows_config.h"
+/* MSC does not support these C99 features properly */
+#define inline __forceinline
+#define restrict 
+#define snprintf _snprintf
+#endif
 
 typedef uint8_t Byte;
 typedef uint16_t Word;

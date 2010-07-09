@@ -64,12 +64,12 @@ typedef struct {
 } Cart;
 
 int load_rom(const char* fn);
-void unload_rom();
-void cart_reset();
+void unload_rom(void);
+void cart_reset(void);
 void write_rom(Word address, Byte value);
 Byte read_rom(Word address);
-void cart_save();
-void cart_load();
+void cart_save(void);
+void cart_load(void);
 
 
 static inline void write_cart_ram(Word address, Byte value);
