@@ -50,12 +50,12 @@ extern enum ConsoleMode console_mode;
 
 unsigned mem_map[256];
 
-void memory_init() {
+void memory_init(void) {
 	himem = malloc (sizeof(Byte) * SIZE_HIMEM);
 	vector_table = malloc(sizeof(Byte*) * VT_ENTRIES);
 }
 
-void memory_reset() {
+void memory_reset(void) {
 	if (internal0 != NULL)
 		free(internal0);
 	if ((console == GBC) || (console == GBA)) {
@@ -78,7 +78,7 @@ void memory_reset() {
 	set_vector_block(MEM_IO, himem, SIZE_HIMEM);
 }
 
-void memory_fini() {
+void memory_fini(void) {
 	free(internal0);
 	free(himem);
 	free(vector_table);
@@ -212,12 +212,12 @@ void writeb(Word address, Byte value) {
 	}
 }
 
-void memory_save() {
+void memory_save(void) {
 	save_memory("iram", internal0, SIZE_INTERNAL_0);
 	save_memory("himem", himem, SIZE_HIMEM);
 }
 
-void memory_load() {
+void memory_load(void) {
 	load_memory("iram", internal0, SIZE_INTERNAL_0);
 	load_memory("himem", himem, SIZE_HIMEM);
 

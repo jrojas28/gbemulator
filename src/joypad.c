@@ -32,7 +32,8 @@ static SDLKey key_binds[8];
 static int is_pressed[8];
 
 
-void joypad_init() {
+void joypad_init(void) {
+	int i;
 	// defaults
 	key_binds[BUTTON_RIGHT] 	= SDLK_RIGHT;
 	key_binds[BUTTON_LEFT] 		= SDLK_LEFT;
@@ -43,14 +44,15 @@ void joypad_init() {
 	key_binds[BUTTON_SELECT]	= SDLK_BACKSLASH;
 	key_binds[BUTTON_START]		= SDLK_SPACE;
 
-	for (int i = 0; i < NUM_BUTTONS; i++) {
+	for (i = 0; i < NUM_BUTTONS; i++) {
 		is_pressed[i] = 0;
 	}
 	
 }
 
 void key_event(SDL_KeyboardEvent* event) {
-	for (int i = 0; i < NUM_BUTTONS; i++) {
+	int i;
+	for (i = 0; i < NUM_BUTTONS; i++) {
 		if (event->keysym.sym == key_binds[i]) {
 			if (event->type == SDL_KEYDOWN)
 				is_pressed[i] = 1;
@@ -60,7 +62,7 @@ void key_event(SDL_KeyboardEvent* event) {
 	}
 }
 
-void update_p1() {
+void update_p1(void) {
 	Byte p1 = read_io(HWREG_P1) | 0x0F;		// set all buttons as unpressed
 	// a 0 bit represents a button being pressed.
 	// the following code unsets appropriate bits.

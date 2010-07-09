@@ -72,7 +72,7 @@ Display display;
 extern enum Console console;
 extern enum ConsoleMode console_mode;
 
-void display_init() {
+void display_init(void) {
 	display.x_res = 320;
 	display.y_res = 288;
 	display.bpp = 32;
@@ -139,14 +139,15 @@ void display_init() {
 	return;
 }
 
-void display_fini() {
-	for (int i = 0; i < TILES; i++) {
+void display_fini(void) {
+	int i;
+	for (i = 0; i < TILES; i++) {
 		tile_fini(&display.tiles_tdt_0[i]);
 	}
-	for (int i = 0; i < TILES; i++) {
+	for (i = 0; i < TILES; i++) {
 		tile_fini(&display.tiles_tdt_1[i]);
 	}
-	for (int i = 0; i < SPRITES; i++) {
+	for (i = 0; i < SPRITES; i++) {
 		sprite_fini(&display.sprites[i]);
 	}
 
@@ -165,18 +166,19 @@ void display_fini() {
 }
 
 
-void display_reset() {
+void display_reset(void) {
+	int i;
 	if (((console == GBC) || (console == GBA)) && (console_mode == GBC_ENABLED)) {
 		display.vram = malloc(sizeof(Byte) * VRAM_SIZE_GBC);
-		bzero(display.vram, VRAM_SIZE_GBC);
+		memset(display.vram, 0, VRAM_SIZE_GBC);
 	} else {
 		display.vram = malloc(sizeof(Byte) * VRAM_SIZE_DMG);
-		bzero(display.vram, VRAM_SIZE_DMG);
+		memset(display.vram, 0, VRAM_SIZE_DMG);
 	}
 
 	display.vram_bank = 0;
 	display.oam = malloc(sizeof(Byte) * SIZE_OAM);
-	bzero(display.oam, SIZE_OAM);
+	memset(display.oam, 0, SIZE_OAM);
 	set_vector_block(MEM_VIDEO, display.vram + (display.vram_bank * 0x2000), SIZE_VIDEO);
 	set_vector_block(MEM_OAM, display.oam, 0x100);
 
@@ -185,32 +187,31 @@ void display_reset() {
 	display.tiles_tdt_1 = malloc(sizeof(Tile) * TILES);
 	display.sprites = malloc(sizeof(Sprite) * SPRITES);
 
-	for (int i = 0; i < TILES; i++) {
+	for (i = 0; i < TILES; i++) {
 		tile_init(&display.tiles_tdt_0[i]);
 	}
-	for (int i = 0; i < TILES; i++) {
+	for (i = 0; i < TILES; i++) {
 		tile_init(&display.tiles_tdt_1[i]);
 	}
-	for (int i = 0; i < SPRITES; i++) {
+	for (i = 0; i < SPRITES; i++) {
 		sprite_init(&display.sprites[i]);
 	}
-
 
 	update_bg_palette();
 	update_sprite_palette_0();
 	update_sprite_palette_1();
 	
-	for (int i = 0; i < TILES; i++) {
+	for (i = 0; i < TILES; i++) {
 		display.tiles_tdt_0[i].pixel_data = display.vram + (i * 16);
 		tile_set_palette(&display.tiles_tdt_0[i], &display.background_palette);
 		tile_invalidate(&display.tiles_tdt_0[i]);
 	}
-	for (int i = 0; i < TILES; i++) {
+	for (i = 0; i < TILES; i++) {
 		display.tiles_tdt_1[i].pixel_data = display.vram + (i * 16) + 0x0800;
 		tile_set_palette(&display.tiles_tdt_1[i], &display.background_palette);
 		tile_invalidate(&display.tiles_tdt_1[i]);
 	}
-	for (int i = 0; i < SPRITES; i++) {
+	for (i = 0; i < SPRITES; i++) {
 		display.sprites[i].pixel_data = display.vram + (i * 16);
 		sprite_set_palette(&display.sprites[i], &display.background_palette);
 		sprite_invalidate(&display.sprites[i]);
@@ -229,11 +230,11 @@ void set_vram_bank(unsigned int bank) {
 
 void display_update(unsigned int cycles) {
 	Byte ly, stat, lcdc;
+	int i;
 	display.cycles += cycles;
 	ly = read_io(HWREG_LY);
 	stat = read_io(HWREG_STAT);
 	lcdc = read_io(HWREG_LCDC);
-
 	if (!(lcdc & 0x80))
 		return;
 	
@@ -315,16 +316,16 @@ void display_update(unsigned int cycles) {
 				draw_frame();
 				// before we begin redrawing the screen, sort out some things.
 				// update sprite palettes - fairly ugly hack.
-				for (int sprite = 0; sprite < OAM_BLOCKS; sprite++) {
-					sprite_set_palette(&display.sprites[get_sprite_pattern(sprite)], 
-						&display.sprite_palette[(get_sprite_flags(sprite) 
+				for (i = 0; i < OAM_BLOCKS; i++) {
+					sprite_set_palette(&display.sprites[get_sprite_pattern(i)], 
+						&display.sprite_palette[(get_sprite_flags(i) 
 							& FLAG_PALETTE) >> 4]);
 				}
 				// update sprite height - another fairly ugly hack.
 				// if spriteHeight has been changed from 8 to 16:
 				if ((lcdc & 0x04) && (display.sprite_height == 8)) {
 					display.sprite_height = 16;
-					for (int i = 0; i < SPRITES; i++) {
+					for (i = 0; i < SPRITES; i++) {
 						//sprites_[i]->setHeight(16);
 						sprite_set_height(&display.sprites[i], 16);
 					}
@@ -332,7 +333,7 @@ void display_update(unsigned int cycles) {
 				// if spriteHeight has been changed from 16 to 8:
 				if ((!(lcdc & 0x04)) && (display.sprite_height == 16)) {
 					display.sprite_height = 8;
-					for (int i = 0; i < SPRITES; i++) {
+					for (i = 0; i < SPRITES; i++) {
 						sprite_set_height(&display.sprites[i], 8);
 					}
 				}
@@ -363,17 +364,14 @@ static inline Byte set_mode(Byte stat, Byte mode) {
 	return (stat & (~STAT_MODES)) | mode;
 }
 
-
-
 void draw_frame() {
 	scale_nn2x(display.display, display.screen);
 	SDL_Flip(display.screen);
 }
 
-
-
 static void draw_background(const Byte lcdc, const Byte ly, const int colour) {
-    Byte scx = read_io(HWREG_SCX);
+    unsigned int x;
+	Byte scx = read_io(HWREG_SCX);
     Byte scy = read_io(HWREG_SCY);
     Byte wx = read_io(HWREG_WX);
     Byte wy = read_io(HWREG_WY);
@@ -385,7 +383,7 @@ static void draw_background(const Byte lcdc, const Byte ly, const int colour) {
 	Byte tile_y;
 	int screen_x;
 	unsigned int x_pos;
-	for (unsigned int x = scx; x <= (scx + (unsigned)DISPLAY_W); x += 8) {
+	for (x = scx; x <= (scx + (unsigned)DISPLAY_W); x += 8) {
 		Byte bg_x = x & 0xFF;
 		tile_x = (bg_x / 8);
 		tile_y = (bg_y / 8);
@@ -420,7 +418,8 @@ static void draw_background(const Byte lcdc, const Byte ly, const int colour) {
 }
 
 static void draw_window(const Byte lcdc, const Byte ly, const int colour) {
-    Byte wx = read_io(HWREG_WX);
+    unsigned int win_x;
+	Byte wx = read_io(HWREG_WX);
     Byte wy = read_io(HWREG_WY);
 	Byte tile_code;
 	Byte offset_y = (ly - wy) & 0x07;
@@ -430,7 +429,7 @@ static void draw_window(const Byte lcdc, const Byte ly, const int colour) {
 	int x;
 	if ((win_y >= DISPLAY_H) || (ly < wy))
 		return;
-	for (unsigned int win_x = 0; win_x <= 255; win_x += 8) {
+	for (win_x = 0; win_x <= 255; win_x += 8) {
 		tile_x = (win_x / 8);
 		tile_y = (win_y / 8);
 		x = win_x + wx - (signed)7;
@@ -467,20 +466,22 @@ void draw_sprites(const Byte lcdc, const Byte ly, const int priority) {
 	int sprite_x;
 	int sprite_y;
 	int offset_y;
+	int i;
 	Byte sprite_priority;
-	for (int sprite = 0; sprite < OAM_BLOCKS; sprite++) {
-		sprite_y = get_sprite_y(sprite) - (signed)16;
-		sprite_x = get_sprite_x(sprite) - (signed)8;
-		sprite_priority = get_sprite_flags(sprite) >> 7;
+	for (i = 0; i < OAM_BLOCKS; i++) {
+		sprite_y = get_sprite_y(i) - (signed)16;
+		sprite_x = get_sprite_x(i) - (signed)8;
+		sprite_priority = get_sprite_flags(i) >> 7;
 		if ((ly >= sprite_y) && (ly < (sprite_y + display.sprite_height)) && (sprite_priority == priority)) {
 			offset_y = (signed)ly - sprite_y;
-			sprite_blit(&display.sprites[get_sprite_pattern(sprite)], display.display, sprite_x, ly, offset_y, (get_sprite_flags(sprite) & 0x60) >> 5);
+			sprite_blit(&display.sprites[get_sprite_pattern(i)], display.display, sprite_x, ly, offset_y, (get_sprite_flags(i) & 0x60) >> 5);
 		}
 	}
 }
 
 
-void update_bg_palette() {
+void update_bg_palette(void) {
+	int i;
 	Byte bgp = read_io(HWREG_BGP);
 	display.background_palette.colors[0].r = display.colours[bgp & 0x03].r;
 	display.background_palette.colors[0].g = display.colours[bgp & 0x03].g;
@@ -498,15 +499,15 @@ void update_bg_palette() {
 	display.background_palette.colors[3].g = display.colours[(bgp >> 6) & 0x03].g;
 	display.background_palette.colors[3].b = display.colours[(bgp >> 6) & 0x03].b;
 
-	for (int i = 0; i < TILES; i++) {
+	for (i = 0; i < TILES; i++) {
 		tile_set_palette(&display.tiles_tdt_0[i], &display.background_palette);
 	}
-	for (int i = 0; i < TILES; i++) {
+	for (i = 0; i < TILES; i++) {
 		tile_set_palette(&display.tiles_tdt_1[i], &display.background_palette);
 	}
 }
 
-void update_sprite_palette_0() {
+void update_sprite_palette_0(void) {
 	Byte obp0 = read_io(HWREG_OBP0);
 	// colour 0 is transparent anyway.
 	display.sprite_palette[0].colors[0].r = display.colours[obp0 & 0x03].r;
@@ -526,7 +527,7 @@ void update_sprite_palette_0() {
 	display.sprite_palette[0].colors[3].b = display.colours[(obp0 >> 6) & 0x03].b;
 }
 
-void update_sprite_palette_1() {
+void update_sprite_palette_1(void) {
 	Byte obp1 = read_io(HWREG_OBP1);
 	// colour 0 is transparent anyway.
 	display.sprite_palette[1].colors[0].r = display.colours[obp1 & 0x03].r;
@@ -567,20 +568,21 @@ static inline Byte get_sprite_flags(const unsigned int sprite) {
 }
 
 void launch_dma(Byte address) {
+	unsigned int i;
 	Word real_address = address * 0x100;
-	for (unsigned int i = 0; i < SIZE_OAM; i++) {
+	for (i = 0; i < SIZE_OAM; i++) {
 		display.oam[i] = readb(real_address + i);
 	}
 }
 
-void launch_hdma(unsigned length) {
+void launch_hdma(int length) {
+	int i;
 	Word src = (read_io(HWREG_HDMA2) & 0xf0) + (read_io(HWREG_HDMA1) << 8);
 	Word dest = (read_io(HWREG_HDMA4) & 0xf0) + ((read_io(HWREG_HDMA3) & 0x1f) << 8);
 	assert(length <= 0x800);
-	int i;
 	if ((src <= 0x7ff0) || ((src >= 0x8000) && (src <= 0x9ff0))) {
 		for (i = 0; i < length; i++)
-			write_vram(dest + MEM_VIDEO + i, readb(src + 1));
+			write_vram(dest + MEM_VIDEO + i, readb(src + i));
 	} else {
 		fprintf(stderr, "hdma src/dest invalid. src: %hx dest: %hx\n", src, dest);
 	}
@@ -590,6 +592,7 @@ void launch_hdma(unsigned length) {
 void start_hdma(Byte hdma5) {
 	if (hdma5 & 0x80) {
 		/* hblank dma */
+		fprintf(stderr, "hblank dma");
 		write_io(HWREG_HDMA5, read_io(HWREG_HDMA5) & (~0x80));
 	} else {
 		/* general dma */
@@ -660,9 +663,9 @@ static inline void put_pixel(const SDL_Surface *surface, const int x, const int 
 static void fill_rectangle(SDL_Surface *surface, const int x, const int y, 
                             const int w, const int h, 
                             const unsigned int colour) {
+	SDL_Rect r;
 	assert(surface != NULL);
 	assert(w >= 0); assert(h >= 0);
-	SDL_Rect r;
 	r.x = x;
 	r.y = y;
 	r.w = w;
@@ -690,11 +693,12 @@ static void tile_fini(Tile *tile) {
 }
 
 static void tile_regenerate(Tile *tile) {
+	int x, y;
 	Byte colour_code;
 	fill_rectangle(tile->surface_0, 0, 0, 8, 8, 4);
 	fill_rectangle(tile->surface_123, 0, 0, 8, 8, 4);
-	for (int y = 0; y < 8; y++) {
-		for (int x = 0; x < 8; x++) {
+	for (y = 0; y < 8; y++) {
+		for (x = 0; x < 8; x++) {
 			colour_code  = (tile->pixel_data[y * 2] & (0x80  >> x)) >> (7 - x);
 			colour_code |= (tile->pixel_data[(y * 2) + 1] & (0x80  >> x)) >> (7 - x) << 1;
 			if (colour_code == 0)
@@ -711,34 +715,32 @@ static void tile_set_palette(Tile *tile, SDL_Palette *palette) {
 	SDL_SetPalette(tile->surface_123, SDL_LOGPAL, palette->colors, 0, palette->ncolors);
 }
 
-static void tile_blit_0(Tile *tile, SDL_Surface *surface, const int x, const int y, 
-					const int line) {
+static void tile_blit_0(Tile *tile, SDL_Surface *surface, const int x, const int y, const int line) {
+	SDL_Rect src;
+	SDL_Rect dest;
 	if (tile->is_invalidated == 1)
 		tile_regenerate(tile);
-	SDL_Rect src;
 	src.x = 0;
 	src.y = line;
 	src.w = 8;
 	src.h = 1;
-
-	SDL_Rect dest;
 	dest.x = x;
 	dest.y = y;
 
 	SDL_BlitSurface(tile->surface_0, &src, surface, &dest);
 }
 
-static void tile_blit_123(Tile *tile, SDL_Surface *surface, const int x, const int y, 
-					const int line) {
+static void tile_blit_123(Tile *tile, SDL_Surface *surface, const int x, const int y, const int line) {
+	SDL_Rect dest;
+	SDL_Rect src;
 	if (tile->is_invalidated == 1)
 		tile_regenerate(tile);
-	SDL_Rect src;
 	src.x = 0;
 	src.y = line;
 	src.w = 8;
 	src.h = 1;
 
-	SDL_Rect dest;
+
 	dest.x = x;
 	dest.y = y;
 
@@ -746,8 +748,9 @@ static void tile_blit_123(Tile *tile, SDL_Surface *surface, const int x, const i
 }
 
 static void sprite_init(Sprite *sprite) {
+	int i;
 	sprite->pixel_data = NULL;
-	for (int i = 0; i < 4; i++) {
+	for (i = 0; i < 4; i++) {
 		sprite->surface[i] = SDL_CreateRGBSurface(SDL_SWSURFACE, 8, 8, 8, 0, 0, 0, 0);
 		if (sprite->surface[i] == NULL) {
 			fprintf(stderr, "surface creation failed: %s\n", SDL_GetError());
@@ -760,18 +763,20 @@ static void sprite_init(Sprite *sprite) {
 }
 
 static void sprite_fini(Sprite *sprite) {
-	for (int i = 0; i < 4; i++) {
+	int i;
+	for (i = 0; i < 4; i++) {
 		SDL_FreeSurface(sprite->surface[i]);
 	}
 }
 
 void sprite_regenerate(Sprite *sprite, const int flip) {
+	int x, y;
 	Byte colour_code;
 	Byte cache_x;
 	Byte cache_y;
 	fill_rectangle(sprite->surface[flip], 0, 0, 8, sprite->height, 0);
-	for (int y = 0; y < sprite->height; y++) {
-		for (int x = 0; x < 8; x++) {
+	for (y = 0; y < sprite->height; y++) {
+		for (x = 0; x < 8; x++) {
 			colour_code  = (sprite->pixel_data[y * 2] & (0x80  >> x)) >> (7 - x);
 			colour_code |= (sprite->pixel_data[(y * 2) + 1] & (0x80  >> x)) >> (7 - x) << 1;
 			cache_x = x;
@@ -787,22 +792,21 @@ void sprite_regenerate(Sprite *sprite, const int flip) {
 }
 
 void sprite_set_palette(Sprite *sprite, SDL_Palette *palette) {
-	for (int i = 0; i < 4; i++) {
+	int i;
+	for (i = 0; i < 4; i++) {
 		SDL_SetPalette(sprite->surface[i], SDL_LOGPAL, palette->colors, 0, palette->ncolors);
 	}
 }
 
-void sprite_blit(Sprite *sprite, SDL_Surface* surface, const int x, const int y, 
-					const int line, const int flip) {
+void sprite_blit(Sprite *sprite, SDL_Surface* surface, const int x, const int y, const int line, const int flip) {
+	SDL_Rect src;
+	SDL_Rect dest;
 	if (sprite->is_invalidated[flip] == 1)
 		sprite_regenerate(sprite, flip);
-	SDL_Rect src;
 	src.x = 0;
 	src.y = line;
 	src.w = 8;
 	src.h = 1;
-
-	SDL_Rect dest;
 	dest.x = x;
 	dest.y = y;
 
@@ -810,8 +814,9 @@ void sprite_blit(Sprite *sprite, SDL_Surface* surface, const int x, const int y,
 }
 
 void sprite_set_height(Sprite *sprite, int height) {
+	int i;
 	sprite->height = height;
-	for (int i = 0; i < 4; i++) {
+	for (i = 0; i < 4; i++) {
 		SDL_FreeSurface(sprite->surface[i]);
 		sprite->surface[i] = SDL_CreateRGBSurface(SDL_SWSURFACE, 8, height, 8, 0, 0, 0, 0);
 		SDL_SetColorKey(sprite->surface[i], SDL_SRCCOLORKEY | SDL_RLEACCEL, 0);
@@ -819,14 +824,15 @@ void sprite_set_height(Sprite *sprite, int height) {
 	}
 }
 
-void display_save() {
+void display_save(void) {
 	save_uint("display.cycles", display.cycles);
 	save_int("sheight", display.sprite_height);
 	save_memory("vram", display.vram, SIZE_VIDEO);
 	save_memory("oam", display.oam, SIZE_OAM);
 }
 
-void display_load() {
+void display_load(void) {
+	int i;
 	display.cycles = load_uint("display.cycles");
 	display.sprite_height = load_int("sheight");
 	load_memory("vram", display.vram, SIZE_VIDEO);
@@ -836,14 +842,14 @@ void display_load() {
 	update_sprite_palette_0();
 	update_sprite_palette_1();
 
-	for (int i = 0; i < TILES; i++) {
+	for (i = 0; i < TILES; i++) {
 		tile_invalidate(&display.tiles_tdt_0[i]);
 	}
-	for (int i = 0; i < TILES; i++) {
+	for (i = 0; i < TILES; i++) {
 		display.tiles_tdt_1[i].pixel_data = display.vram + (i * 16) + 0x0800;
 		tile_invalidate(&display.tiles_tdt_1[i]);
 	}
-	for (int i = 0; i < SPRITES; i++) {
+	for (i = 0; i < SPRITES; i++) {
 		display.sprites[i].pixel_data = display.vram + (i * 16);
 		sprite_invalidate(&display.sprites[i]);
 	}

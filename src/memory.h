@@ -32,11 +32,11 @@
 
 #define VT_GRANULARITY 0x100
 
-void memory_reset();
-void memory_init();
-void memory_fini();
-void memory_save();
-void memory_load();
+void memory_reset(void);
+void memory_init(void);
+void memory_fini(void);
+void memory_save(void);
+void memory_load(void);
 
 static inline Byte readb(Word address);
 void writeb(Word address, Byte value);
@@ -100,8 +100,9 @@ static inline Byte readb(Word address) {
 }
 
 static inline void set_vector_block(Word address, Byte* real_address, unsigned c) {
-	for (unsigned i = 0; i < (c / VT_GRANULARITY); i++) {
-		set_vector((address >> 8) + i, real_address + (i * VT_GRANULARITY));
+	unsigned int i;
+	for (i = 0; i < (c / VT_GRANULARITY); i++) {
+		set_vector((address >> 8) + (Word)i, real_address + (i * VT_GRANULARITY));
 	}
 }
 

@@ -56,10 +56,10 @@ typedef struct {
 } CoreState;
 
 int execute_cycles(int max_cycles);
-void core_reset();
-void dump_state();
-void core_save();
-void core_load();
+void core_reset(void);
+void dump_state(void);
+void core_save(void);
+void core_load(void);
 
 static inline void raise_int(Byte interrupt) {
 	writeb(HWREG_IF, readb(HWREG_IF) | interrupt);

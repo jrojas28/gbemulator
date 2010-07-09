@@ -44,10 +44,10 @@ static unsigned size_instr(Byte *rom, unsigned int address);
 
 static char **mnemonics;
 static char **operands;
-static unsigned int *opcodes;
-static unsigned int *length;
-static unsigned int *cycles;
-static unsigned int entries;
+static int *opcodes;
+static int *length;
+static int *cycles;
+static int entries;
 
 void debug_init() {
 	char buffer[256];

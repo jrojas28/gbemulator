@@ -34,7 +34,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <math.h>
 #include <assert.h>
 #include <portaudio.h>
@@ -60,16 +59,18 @@ static inline float gb_freq_to_freq(unsigned int gb_frequency);
 static inline void mark_channel_on(unsigned int channel);
 static inline void mark_channel_off(unsigned int channel);
 
-void sound_init() {
+void sound_init(void) {
 	unsigned char r7;
 	unsigned short r15;
 	int i;
-	
-	// allocate memory for LFSR tables
+	PaError err;
+	PaStreamParameters output_parameters;
+	PaStreamInfo* stream_info;
+	/* allocate memory for LFSR tables */
 	lfsr_7 = malloc(LFSR_7_SIZE);
 	lfsr_15 = malloc(LFSR_15_SIZE);
 
-	// initialise 7 bit LFSR values
+	/* initialise 7 bit LFSR values */
 	r7 = 0xff;
 	for (i = 0; i < LFSR_7_SIZE; i++) {
 		r7 >>= 1;
@@ -78,10 +79,10 @@ void sound_init() {
 			lfsr_7[i] = 1;
 		else
 			lfsr_7[i] = -1;
-		//lfsr_7[i / 8] |= ((r7 & 0x01) << (i % 8));
 	}
 
-	// initialise 15 bit LFSR values
+
+	/* initialise 15 bit LFSR values */
 	r15 = 0xffff;
 	for (i = 0; i < LFSR_15_SIZE; i++) {
 		r15 >>= 1;
@@ -90,17 +91,15 @@ void sound_init() {
 			lfsr_15[i] = 1;
 		else
 			lfsr_15[i] = -1;
-		//lfsr_15[i / 8] |= ((r15 & 0x01) << (i % 8));
 	}
 	
+
+	/*
 	for (i = 0; i < 32; i++) {
-		sound.channel_3.samples[i] = sin((i * 2 * M_PI) / 32) * 15;
+		//sound.channel_3.samples[i] = sin((i * 2 * M_PI) / 32) * 15;
 		//printf("%hhd\n", sound_data.channel_3.samples[i]);
 	}
-	
-	PaError err;
-	PaStreamParameters output_parameters;
-	//const PaDeviceInfo* pdi;
+	*/
 	
 	err = Pa_Initialize();
 	if (err != paNoError) {
@@ -131,7 +130,13 @@ void sound_init() {
 		fprintf(stderr, "could not open output stream: %s\n", Pa_GetErrorText(err));
 		exit(1);
 	} else {
+		stream_info = Pa_GetStreamInfo(stream);
 		printf("portaudio stream opened\n");
+		printf("\toutput latency: %fms\n", stream_info->outputLatency * 1000);
+		printf("\tsample rate: %f\n", stream_info->sampleRate);
+		if ((stream_info->outputLatency * 1000) > 150) {
+			printf("warning: high sound output latency\n");
+		}
 	}
 	
 	sound.volume_left = 7;
@@ -144,7 +149,7 @@ void sound_init() {
 	
 }
 
-void sound_fini() {
+void sound_fini(void) {
 	PaError err;
 	if (sound.is_on) {
 		stop_sound();
@@ -157,14 +162,14 @@ void sound_fini() {
 	free(lfsr_15);
 }
 
-void stop_sound() {
+void stop_sound(void) {
 	PaError err;
 	assert(sound.is_on);
 	err = Pa_StopStream(stream);
 	sound.is_on = 0;
 }
 
-void start_sound() {
+void start_sound(void) {
 	PaError err;
 	assert(!sound.is_on);
 	err = Pa_StartStream(stream);
@@ -177,7 +182,7 @@ void start_sound() {
 }
 
 // fill with sensible defaults...
-void sound_reset() {
+void sound_reset(void) {
 	sound.volume_left = 7; // FIXME
 	sound.volume_right = 7;
 	
@@ -348,7 +353,7 @@ void write_sound(Word address, Byte value) {
 			frequency = (unsigned int)read_io(HWREG_NR33) | ((unsigned int)(value & 0x07) << 8);
 			sound.channel_3.period = frequency_to_period(65536 / (float)(2048 - frequency));
 			if (value & 0x80) {
-				fprintf(stderr, "TRIGGER3\n");
+				//fprintf(stderr, "TRIGGER3\n");
 				mark_channel_on(3);
 				sound.channel_3.is_on = 1;
 				sound.channel_3.i = 0;
@@ -459,9 +464,7 @@ static inline void mark_channel_on(unsigned int channel) {
 
 /* updates NR52 with the channel status (OFF) */
 static inline void mark_channel_off(unsigned int channel) {
-	fprintf(stderr, "channel: %u\tbefore: %hhx\t", channel, read_io(HWREG_NR52));
 	write_io(HWREG_NR52, read_io(HWREG_NR52) & ~(0x01 << ((unsigned char)channel - 1)));
-	fprintf(stderr, "after: %hhx\n", read_io(HWREG_NR52));
 }
 
 /*
@@ -481,6 +484,7 @@ static int call_back(const void *input_buffer, void *output_buffer,
 	char right[CHANNELS];
 	unsigned long i, j;
 	signed int temp;
+	signed short so1, so2;
 	/* Prevent unused variable warnings. */
 	(void) time_info;
 	(void) status_flags;
@@ -683,7 +687,6 @@ static int call_back(const void *input_buffer, void *output_buffer,
 		 * volume can be reduced with as little rounding down data loss 
 		 * as possible.
 		 */
-		signed short so1, so2;
 		so1 = ((left[0] + left[1] + left[2] + left[3]) * data->volume_left) / 7;
 		so2 = ((right[0] + right[1] + right[2] + right[3]) * data->volume_right) / 7;
 		// output the mixed samples
@@ -695,7 +698,7 @@ static int call_back(const void *input_buffer, void *output_buffer,
     return paContinue;
 }
 
-void sound_save() {
+void sound_save(void) {
 	save_uint("channel_1.length", sound.channel_1.length);
 	save_uint("channel_1.period", sound.channel_1.period);
 	save_int("channel_1.gb_frequency", sound.channel_1.gb_frequency);
@@ -711,7 +714,7 @@ void sound_save() {
 	
 }
 
-void sound_load() {
+void sound_load(void) {
 	save_uint("channel_1.sweep.number", sound.channel_1.sweep.number);
 	save_uint("channel_1.sweep.time", sound.channel_1.sweep.time);
 	save_int("channel_1.sweep.shadow", sound.channel_1.sweep.shadow);

@@ -27,6 +27,9 @@
 #ifndef _SCALE_H
 #define _SCALE_H
 
+#include <SDL/SDL.h>
+#include "gbem.h"
+
 void scale_nn(SDL_Surface *src, SDL_Surface *dest);
 void scale_nn2x(SDL_Surface* restrict src, SDL_Surface* restrict dest);
 

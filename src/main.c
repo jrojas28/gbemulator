@@ -34,7 +34,12 @@
 
 #include <SDL/SDL.h>
 
+#if !defined _WIN64 && !defined _WIN32
 #include "config.h"
+#else
+#include "windows_config.h"
+#endif
+
 #include "memory.h"
 #include "core.h"
 #include "cart.h"
@@ -54,13 +59,26 @@ enum ConsoleMode console_mode = DMG_EMU;
 
 extern CoreState core;
 
-void reset();
-void quit();
+void reset(void);
+void quit(void);
 extern int debugging;
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
+	int i;
+	unsigned int is_paused;
+	unsigned int cycles;
+	unsigned int core_period;
+	SDL_Event event;
+	unsigned int core_time;
+	unsigned int delay;
+	int is_delayed;
+	unsigned int real_time;
+	unsigned int real_time_passed;
+	unsigned int delays;
+	unsigned int frame_time;
+
 	printf("%s v%s\n", PACKAGE_NAME, PACKAGE_VERSION);
-	if (argc > 3) {
+	if (argc != 2) {
 		printf("Invalid arguments\n");
 		return 1;
 	}
@@ -82,24 +100,21 @@ int main (int argc, char *argv[]) {
 	sound_init();
 	debug_init();
 	reset();
-	int i;
-	unsigned int is_paused = 0;
-	unsigned int cycles = 0;
-	unsigned int core_period;				// in nanoseconds
-	SDL_Event event;
-	unsigned int core_time = 0;
-	unsigned int delay = 1;
-	int is_delayed = 0;
-	unsigned int real_time = SDL_GetTicks() * 1000000;
-	unsigned int real_time_passed;
-	unsigned int delays = 0;
-	unsigned int frame_time = SDL_GetTicks();
+	is_paused = 0;
+	cycles = 0;
+	core_time = 0;
+	delay = 1;
+	is_delayed = 0;
+	real_time = SDL_GetTicks() * 1000000;
+	real_time_passed;
+	delays = 0;
+	frame_time = SDL_GetTicks();
 	// main loop
 	// TODO intelligent algorithm for working out number of cycles to execute
 	// based on interrupt predictions...
 	while(1) {
 		if ((!is_delayed) && (!is_paused)) {
-			for (int i = 0; i < 10; i++) {
+			for (i = 0; i < 10; i++) {
 				cycles = execute_cycles(200);
 				core_period = (cycles >> 2) * (1000000000/(1048576));
 				core_time += core_period;
@@ -174,7 +189,7 @@ int main (int argc, char *argv[]) {
 }
 
 // reset the emulator. must be called before ROM execution.
-void reset() {
+void reset(void) {
 	// the order in which these are called is important
 	memory_reset();
 	cart_reset();
@@ -184,7 +199,7 @@ void reset() {
 	sound_reset();
 }
 
-void quit() {
+void quit(void) {
 	unload_rom();
 	display_fini();
 	memory_fini();

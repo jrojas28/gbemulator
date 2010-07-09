@@ -35,10 +35,10 @@ static unsigned int div_time;
 // periods for each tima setting, in machine cycles
 static const unsigned int tima_periods[] = {1024, 16, 64, 256};
 
-static inline unsigned int get_tima_period();
-static inline unsigned int get_div_period();
+static inline unsigned int get_tima_period(void);
+static inline unsigned int get_div_period(void);
 
-void timer_reset() {
+void timer_reset(void) {
 	tima_time = 0;
 	div_time = 0;
 }
@@ -71,12 +71,12 @@ void timer_check(unsigned int period) {
 }
 
 // This function returns the time between TIMA incrementation.
-static inline unsigned int get_tima_period() {
+static inline unsigned int get_tima_period(void) {
 	// return the appropriate time
 	return tima_periods[readb(HWREG_TAC) & 0x03];
 }
 
-static inline unsigned int get_div_period() {
+static inline unsigned int get_div_period(void) {
 	return 64;
 }
 

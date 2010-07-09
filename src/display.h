@@ -130,23 +130,23 @@ typedef struct sprite {
 
 
 void display_update(unsigned int cycles);
-void display_reset();
-void display_init();
-void display_fini();
-void draw_frame();
-void update_bg_palette();
-void update_sprite_palette_0();
-void update_sprite_palette_1();
+void display_reset(void);
+void display_init(void);
+void display_fini(void);
+void draw_frame(void);
+void update_bg_palette(void);
+void update_sprite_palette_0(void);
+void update_sprite_palette_1(void);
 Byte check_coincidence(Byte ly, Byte stat);
 void launch_dma(Byte address);
-void display_save();
-void display_load();
+void display_save(void);
+void display_load(void);
 void set_vram_bank(unsigned int bank);
 
-static inline void write_vram(Word address, Byte value);
-static inline Byte read_vram(Word address);
-static inline void write_oam(Word address, Byte value);
-static inline Byte read_oam(Word address);
+static inline void write_vram(const Word address, const Byte value);
+static inline Byte read_vram(const Word address);
+static inline void write_oam(const Word address, const Byte value);
+static inline Byte read_oam(const Word address);
 static inline void tile_invalidate(Tile *tile);
 static inline void sprite_invalidate(Sprite *sprite);
 
@@ -179,7 +179,8 @@ static inline Byte read_oam(const Word address) {
 }
 
 static inline void sprite_invalidate(Sprite *sprite) {
-	for (int i = 0; i < 4; i++) {
+	int i;
+	for (i = 0; i < 4; i++) {
 		sprite->is_invalidated[i] = 1;
 	}
 }

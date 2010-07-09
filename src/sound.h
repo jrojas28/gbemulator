@@ -27,7 +27,6 @@
 #ifndef _SOUND_H
 #define _SOUND_H
 
-#include <stdbool.h>
 #include "gbem.h"
 
 #define HIGH 				127
@@ -61,10 +60,10 @@ typedef struct {
 	unsigned int period;
 	signed int gb_frequency;
 	unsigned int i;
-	bool is_on;
-	bool is_continuous;
-	bool is_on_left;
-	bool is_on_right;
+	int is_on;
+	int is_continuous;
+	int is_on_left;
+	int is_on_right;
 	float duty;
 	Sweep sweep;
 	Envelope envelope;
@@ -76,10 +75,10 @@ typedef struct {
 	signed int gb_frequency;
 	float frequency;
 	unsigned int i;
-	bool is_on;
-	bool is_continuous;
-	bool is_on_left;
-	bool is_on_right;
+	int is_on;
+	int is_continuous;
+	int is_on_left;
+	int is_on_right;
 	float duty;
 	Envelope envelope;
 } Channel_2;
@@ -91,10 +90,10 @@ typedef struct {
 	unsigned int i, j;
 	signed char samples[32];
 	unsigned char volume;
-	bool is_on_left;
-	bool is_on_right;
-	bool is_on;
-	bool is_continuous;
+	int is_on_left;
+	int is_on_right;
+	int is_on;
+	int is_continuous;
 } Channel_3;
 
 typedef struct {
@@ -102,10 +101,10 @@ typedef struct {
 	unsigned int period;
 	unsigned int i, j;
 	unsigned int counter;
-	bool is_on_left;
-	bool is_on_right;
-	bool is_on;
-	bool is_continuous;
+	int is_on_left;
+	int is_on_right;
+	int is_on;
+	int is_continuous;
 	Envelope envelope;
 } Channel_4;
 
@@ -116,19 +115,19 @@ typedef struct {
 	Channel_4 channel_4;	
 	float volume_left;
 	float volume_right;
-	bool is_on;
+	int is_on;
 } SoundData;
 
 
-void sound_init();
-void sound_fini();
+void sound_init(void);
+void sound_fini(void);
 void write_sound(Word address, Byte value);
 void write_wave(Word address, Byte value);
-void stop_sound();
-void start_sound();
-void sound_save();
-void sound_load();
-void sound_reset();
+void stop_sound(void);
+void start_sound(void);
+void sound_save(void);
+void sound_load(void);
+void sound_reset(void);
 
 #endif /* _SOUND_H */
 

@@ -29,8 +29,8 @@
 
 #include "gbem.h"
 
-void save_state();
-void load_state();
+void save_state(void);
+void load_state(void);
 
 void save_memory(char* key, Byte* mem, unsigned int count);
 void save_string(char* key, char* s);
