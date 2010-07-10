@@ -55,7 +55,7 @@ static char base64_lookup(char c);
 
 /* if we dont have getline() we will use our own */
 #ifndef HAVE_GETLINE
-static size_t getline (char **lineptr, size_t *n, FILE *stream);
+static ssize_t getline (char **lineptr, size_t *n, FILE *stream);
 #endif
 
 unsigned int save_slot = 0;
@@ -98,7 +98,7 @@ void load_state(void) {
 	char* key;
 	char* value;
 	char* line = NULL;
-	size_t line_len = 0;
+	size_t n;
 	fn = get_fn();
 	fp = fopen(fn, "r");
 	if (fp == NULL) {
@@ -108,7 +108,7 @@ void load_state(void) {
 		return;
 	}
 	printf("loading state from %s...\n", fn);
-	while (getline(&line, &line_len, fp) >= 0) {
+	while (getline(&line, &n, fp) >= 0) {
 		if (line[0] == '#')
 			continue;
 		separator = strstr(line, "=");
@@ -349,7 +349,7 @@ static char* encode_base64(unsigned char* raw, int c) {
 	return enc;
 }
 
-static void decode_base64(char* enc, unsigned char* raw, unsigned int count) {
+static void decode_base64(char* enc, unsigned char* raw, int count) {
 	int i, j, padding;
 	int enc_len = strlen(enc);
 	uint32_t b;
@@ -406,29 +406,53 @@ static char base64_lookup(char c) {
 	return INVALID;
 }
 
+
 #ifndef HAVE_GETLINE
 #define BUFFER_BLOCK 64
-static size_t getline (char ** const lineptr, size_t * const n, FILE * const stream) {
+/* my own implementation of gnu's getline() function. hopefully it works ok */
+static ssize_t getline (char ** const lineptr, size_t * const n, FILE * const stream) {
 	int c;
 	char* buffer;
 	size_t size;
 	size_t length = 0;
+	if (lineptr == NULL)
+		return -1;
+	if (n == NULL)
+		return -1;
 	if (*lineptr == NULL) {
-		*lineptr = malloc(BUFFER_BLOCK * sizeof(char));
+		buffer = malloc(BUFFER_BLOCK * sizeof(char));
 		size = BUFFER_BLOCK;
+		if (buffer == NULL) {
+			fprintf(stderr, "memory allocation failure\n");
+			return -1;
+		}
 	} else {
 		buffer = *lineptr;
 		size = *n;
 	}
-	while (c = fgetc(stream) != EOF) {
-		++length;
-		if (length == (size - 1)) {
+	c = fgetc(stream);
+	if (c == EOF)
+		return -1;
+	while (c != EOF) {
+		if (length + 1 == size) {
 			size += BUFFER_BLOCK;
 			buffer = realloc(buffer, size);
+			if (buffer == NULL) {
+				fprintf(stderr, "memory allocation failure\n");
+				return -1;
+			}
 		}
 		buffer[length] = (char)c;
-		fprintf(stderr, "%c", (char)c);
+		++length;
+		if (c == '\n')
+			break;
+		 c = fgetc(stream);
 	}
+	buffer[length] = '\0';
+	fprintf(stderr, "%s\n", buffer);
+	*lineptr = buffer;
+	if (n != NULL)
+		*n = size;
 	return length;
 }
 #endif

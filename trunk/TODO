@@ -1,0 +1,33 @@
+TODO
+	Bugs
+		Fix sound bugs
+			mostly affects channel 1, some sounds are wrong
+			do high notes sound out of pitch? YES: interpolation needed
+			fix the never ending noise bug (when daisy turns into bug)
+		Fix time allocated to CPU and timer
+		Fix memory access timings
+		Fix DAA instruction
+		Fix HALT instruction
+			halts until and interrupt is received, even if they are disabled: they are just not serviced (i believe)
+		Implement STOP instruction
+		Initialise sound/graphics data properly!
+	Rewrites
+		the SDL_Delay() calling code is bad
+	Implementation
+		Sprite ordering 
+		State save/load DONE (mostly)
+		Pause: stops sound! DONE
+		Nice scaling algorithms (hqx, etc)
+		Debugger: bit instructions
+		Simple disassembler:
+		Gameboy Color support
+		UI
+		Joystick support
+		internal GB and GBC rom support
+		settings/config file
+	Check behaviour on real hardware
+		Sound 
+			sweep/envelope function
+		Display
+			How LY=LCY coincidences are dealt with
+
