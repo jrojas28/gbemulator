@@ -57,7 +57,7 @@ typedef struct {
 
 typedef struct {
 	unsigned int length;
-	unsigned int period;
+	float period;
 	signed int gb_frequency;
 	unsigned int i;
 	int is_on;
@@ -71,7 +71,7 @@ typedef struct {
 
 typedef struct {
 	unsigned int length;
-	unsigned int period;
+	float period;
 	signed int gb_frequency;
 	float frequency;
 	unsigned int i;

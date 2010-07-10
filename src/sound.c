@@ -93,7 +93,6 @@ void sound_init(void) {
 			lfsr_15[i] = -1;
 	}
 	
-
 	/*
 	for (i = 0; i < 32; i++) {
 		//sound.channel_3.samples[i] = sin((i * 2 * M_PI) / 32) * 15;
