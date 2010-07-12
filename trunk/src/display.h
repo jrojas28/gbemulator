@@ -29,7 +29,6 @@
 
 #include <SDL/SDL.h>
 
-
 #define DISPLAY_W 				160
 #define	DISPLAY_H				144
 
@@ -77,8 +76,8 @@
 #define OAM_FLAG_XFLIP			0x20
 #define OAM_FLAG_PALETTE		0x10
 
-#define TILES					256
-#define SPRITES					256
+#define GBC_EXTRA_TILES			256
+#define GBC_EXTRA_SPRITES		256
 
 #define COLOUR_0				0
 #define COLOUR_123				1
@@ -87,6 +86,9 @@
 
 #define X_FLIP 0x01
 #define Y_FLIP 0x02
+
+#define VRAM_BANK_0				0
+#define VRAM_BANK_1				1
 
 struct tile;
 struct tprite;
@@ -111,6 +113,7 @@ typedef struct {
 	struct sprite* sprites;
 	unsigned int vram_bank;
 	unsigned int is_gbc_dma_active;
+	unsigned int cache_size;
 } Display;
 
 typedef struct tile {
@@ -139,9 +142,11 @@ void update_sprite_palette_0(void);
 void update_sprite_palette_1(void);
 Byte check_coincidence(Byte ly, Byte stat);
 void launch_dma(Byte address);
+void start_hdma(Byte hdma5);
 void display_save(void);
 void display_load(void);
 void set_vram_bank(unsigned int bank);
+
 
 static inline void write_vram(const Word address, const Byte value);
 static inline Byte read_vram(const Word address);
