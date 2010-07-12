@@ -191,15 +191,20 @@ void writeb(Word address, Byte value) {
 					iram_bank = value & 0x07;
 					if (iram_bank == 0)
 						iram_bank = 1;
+					set_vector_block(MEM_INTERNAL_SW, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_SW);
+					set_vector_block(MEM_INTERNAL_ECHO + SIZE_INTERNAL_0, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_ECHO - SIZE_INTERNAL_0);
 				}
-				set_vector_block(MEM_INTERNAL_SW, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_SW);
-				set_vector_block(MEM_INTERNAL_ECHO + SIZE_INTERNAL_0, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_ECHO - SIZE_INTERNAL_0);
 				//fprintf(stderr, "iram_bank %u\n", iram_bank);
 				break;
 			case HWREG_VBK:
 				/* adjust vram bank */
-				set_vram_bank(value & 0x01);
+				if (((console == GBC) || (console == GBA)) && (console_mode == GBC_ENABLED))
+					set_vram_bank(value & 0x01);
 				//fprintf(stderr, "vram_bank %hhx ", value & 0x01);
+			case HWREG_HDMA5:
+				if (((console == GBC) || (console == GBA)) && (console_mode == GBC_ENABLED))
+					start_hdma(value);
+				break;
 			break;
 		}
 		return;

@@ -37,6 +37,8 @@
 #define inline __forceinline
 #define restrict 
 #define snprintf _snprintf
+#include <BaseTsd.h>
+#define ssize_t SSIZE_T
 #endif
 
 typedef uint8_t Byte;
@@ -146,6 +148,8 @@ union UWord {
 #define MEM_INT_TIMER				0x0050
 #define MEM_INT_SERIAL				0x0058
 #define MEM_INT_BUTTON				0x0060
+
+#define IN_GBC_MODE (((console == GBC) || (console == GBA)) && (console_mode == GBC_ENABLED))
 
 enum Console {DMG, POCKET, GBC, SGB, GBA, AUTO};
 enum ConsoleMode {DMG_EMU, GBC_ENABLED};
