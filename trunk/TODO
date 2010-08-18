@@ -1,33 +1,52 @@
 TODO
 	Bugs
+		Fix H/GDMA?
 		Fix sound bugs
 			mostly affects channel 1, some sounds are wrong
 			do high notes sound out of pitch? YES: interpolation needed
 			fix the never ending noise bug (when daisy turns into bug)
+		Fix the strange sound stop + crash bug: obtain core dump when this next occurs
 		Fix time allocated to CPU and timer
-		Fix memory access timings
 		Fix DAA instruction
 		Fix HALT instruction
-			halts until and interrupt is received, even if they are disabled: they are just not serviced (i believe)
+			halts until an interrupt is received, even if they are disabled: they are just not serviced (i believe)
 		Implement STOP instruction
 		Initialise sound/graphics data properly!
+		Find out why some of the demos dont work properly
+		Fix weird slow downs
 	Rewrites
-		the SDL_Delay() calling code is bad
+		the SDL_Delay() calling code is bad: needs to work on a FPS basis?
+		most of the sound code is pretty badly designed tbh
 	Implementation
-		Sprite ordering 
+		serial hack
+		MBC3 real time clock
+		Implement display off feature: the absense of this causes lots of problems: DONE (I HOPE)
+		Sprite ordering
 		State save/load DONE (mostly)
 		Pause: stops sound! DONE
 		Nice scaling algorithms (hqx, etc)
 		Debugger: bit instructions
 		Simple disassembler:
-		Gameboy Color support
+		Gameboy Color support IN PROGRESS
 		UI
 		Joystick support
 		internal GB and GBC rom support
 		settings/config file
+	Nice extras
+		video/sound file output
+		speed adjustment
+		dump tiles
+		
 	Check behaviour on real hardware
 		Sound 
 			sweep/envelope function
 		Display
 			How LY=LCY coincidences are dealt with
 
+
+display cache rewrite
+	merge sprite/tile
+		differences:
+			sprite can have height of 16 or 8
+			tile may need to be drawn with the colours seperated
+	fix sprite bg/w priority

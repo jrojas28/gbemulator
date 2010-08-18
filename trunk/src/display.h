@@ -90,6 +90,10 @@
 #define VRAM_BANK_0				0
 #define VRAM_BANK_1				1
 
+#define VRAM_BANK_SIZE			0x2000
+
+#define GB_FRAME_PERIOD ((HBLANK_CYCLES * 154 * 1000) / 4194304)
+
 struct tile;
 struct tprite;
 
@@ -112,13 +116,12 @@ typedef struct {
 	struct tile* tiles_tdt_1;
 	struct sprite* sprites;
 	unsigned int vram_bank;
-	unsigned int is_gbc_dma_active;
+	unsigned int is_hdma_active;
 	unsigned int cache_size;
 } Display;
 
 typedef struct tile {
 	int is_invalidated;
-	int height;
 	SDL_Surface* surface_0;
 	SDL_Surface* surface_123;
 	Byte *pixel_data;
@@ -146,6 +149,7 @@ void start_hdma(Byte hdma5);
 void display_save(void);
 void display_load(void);
 void set_vram_bank(unsigned int bank);
+void set_lcdc(Byte value);
 
 
 static inline void write_vram(const Word address, const Byte value);
@@ -160,11 +164,11 @@ static inline void write_vram(const Word address, const Byte value) {
 	extern Display display;
 	// NO else here, tile data tables overlap!
 	if ((address >= TDT_0) && (address < (TDT_0 + TDT_0_LEN))) {
-		tile_invalidate(&display.tiles_tdt_0[(address - TDT_0) >> 4]);
+		tile_invalidate(&display.tiles_tdt_0[(display.vram_bank * 256) + ((address - TDT_0) >> 4)]);
 		sprite_invalidate(&display.sprites[(address - TDT_0) >> 4]);
 	}
 	if ((address >= TDT_1) && (address < (TDT_1 + TDT_1_LEN)))
-		tile_invalidate(&display.tiles_tdt_1[(address - TDT_1) >> 4]);
+		tile_invalidate(&display.tiles_tdt_1[(display.vram_bank * 256) + ((address - TDT_1) >> 4)]);
     display.vram[address - MEM_VIDEO + (display.vram_bank * 0x2000)] = value;
 }
 
@@ -174,7 +178,7 @@ static inline Byte read_vram(const Word address) {
 }
 
 static inline void write_oam(const Word address, const Byte value) {
-	extern Display display;	
+	extern Display display;
     display.vram[address - MEM_OAM] = value;
 }
 

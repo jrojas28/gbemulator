@@ -28,6 +28,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include "scale.h"
+#include "hqx/hqx.h"
  
 static inline Uint32 get_pixel(const SDL_Surface *surface, const int x, 
 			const int y);
@@ -76,6 +77,8 @@ void scale_nn2x(SDL_Surface* restrict src, SDL_Surface* restrict dest) {
 	Uint8 * restrict p_dest2;
 	Uint32 pixel;
 	int y, x;
+	assert(dest->w >= (src->w * 2));
+	assert(dest->h >= (src->h * 2));
 	for (y = 0; y < src->h; y++) {
 		p_src = (Uint8 *)src->pixels + (src->pitch * y);
 		p_dest = (Uint8 *)dest->pixels + (dest->pitch * y * 2);
@@ -93,6 +96,116 @@ void scale_nn2x(SDL_Surface* restrict src, SDL_Surface* restrict dest) {
 	}
 }
 
+/* fast? nearest neighbour 3x upscaling */
+void scale_nn3x(SDL_Surface* restrict src, SDL_Surface* restrict dest) {
+	Uint8 * restrict p_src;
+	Uint8 * restrict p_dest;
+	Uint8 * restrict p_dest2;
+	Uint8 * restrict p_dest3;
+	Uint32 pixel;
+	int y, x;
+	assert(dest->w >= (src->w * 3));
+	assert(dest->h >= (src->h * 3));
+	for (y = 0; y < src->h; y++) {
+		p_src = (Uint8 *)src->pixels + (src->pitch * y);
+		p_dest = (Uint8 *)dest->pixels + (dest->pitch * y * 3);
+		p_dest2 = (Uint8 *)dest->pixels + dest->pitch * ((y * 3) + 1);
+		p_dest3 = (Uint8 *)dest->pixels + dest->pitch * ((y * 3) + 2);
+		for (x = 0; x < src->w; x++) {
+			pixel = *(Uint32 *)p_src;
+			*(Uint32 *)(p_dest) = pixel;
+			*(Uint32 *)(p_dest + bpp) = pixel;
+			*(Uint32 *)(p_dest + bpp + bpp) = pixel;
+			*(Uint32 *)(p_dest2) = pixel;
+			*(Uint32 *)(p_dest2 + bpp) = pixel;
+			*(Uint32 *)(p_dest2 + bpp + bpp) = pixel;
+			*(Uint32 *)(p_dest3) = pixel;
+			*(Uint32 *)(p_dest3 + bpp) = pixel;
+			*(Uint32 *)(p_dest3 + bpp + bpp) = pixel;
+			p_src += bpp;
+			p_dest += bpp * 3;
+			p_dest2 += bpp * 3;
+			p_dest3 += bpp * 3;
+		}
+	}
+}
+
+/* fast? nearest neighbour 3x upscaling */
+void scale_nn4x(SDL_Surface* restrict src, SDL_Surface* restrict dest) {
+	Uint8 * restrict p_src;
+	Uint8 * restrict p_dest;
+	Uint8 * restrict p_dest2;
+	Uint8 * restrict p_dest3;
+	Uint8 * restrict p_dest4;
+	Uint32 pixel;
+	int y, x;
+	assert(dest->w >= (src->w * 3));
+	assert(dest->h >= (src->h * 3));
+	for (y = 0; y < src->h; y++) {
+		p_src = (Uint8 *)src->pixels + (src->pitch * y);
+		p_dest = (Uint8 *)dest->pixels + (dest->pitch * y * 4);
+		p_dest2 = (Uint8 *)dest->pixels + dest->pitch * ((y * 4) + 1);
+		p_dest3 = (Uint8 *)dest->pixels + dest->pitch * ((y * 4) + 2);
+		p_dest4 = (Uint8 *)dest->pixels + dest->pitch * ((y * 4) + 3);
+		for (x = 0; x < src->w; x++) {
+			pixel = *(Uint32 *)p_src;
+			*(Uint32 *)(p_dest) = pixel;
+			*(Uint32 *)(p_dest + bpp) = pixel;
+			*(Uint32 *)(p_dest + bpp + bpp) = pixel;
+			*(Uint32 *)(p_dest + bpp + bpp + bpp) = pixel;
+			*(Uint32 *)(p_dest2) = pixel;
+			*(Uint32 *)(p_dest2 + bpp) = pixel;
+			*(Uint32 *)(p_dest2 + bpp + bpp) = pixel;
+			*(Uint32 *)(p_dest2 + bpp + bpp + bpp) = pixel;
+			*(Uint32 *)(p_dest3) = pixel;
+			*(Uint32 *)(p_dest3 + bpp) = pixel;
+			*(Uint32 *)(p_dest3 + bpp + bpp) = pixel;
+			*(Uint32 *)(p_dest3 + bpp + bpp + bpp) = pixel;
+			*(Uint32 *)(p_dest4) = pixel;
+			*(Uint32 *)(p_dest4 + bpp) = pixel;
+			*(Uint32 *)(p_dest4 + bpp + bpp) = pixel;
+			*(Uint32 *)(p_dest4 + bpp + bpp + bpp) = pixel;
+			p_src += bpp;
+			p_dest += bpp * 4;
+			p_dest2 += bpp * 4;
+			p_dest3 += bpp * 4;
+			p_dest4 += bpp * 4;
+		}
+	}
+}
+
+#if 0
+void blur(SDL_Surface* restrict s) {
+	int x, y;
+	Uint32 pixel;
+	SDL_Surface * restrict t;
+	Uint8 * ps, * pt, * psu, * psd, * psl, * psr;
+	Uint16 pitch;
+	pitch = s->pitch / bpp;
+	t = SDL_CreateRGBSurface(SDL_SWSURFACE, s->w, s->h, bpp, 0, 0, 0, 0);
+	
+	for (y = 1; y < (s->h - 1); y++) {
+		ps = (Uint8 *)s->pixels + (s->pitch * y) + 1;
+		psu = (Uint8 *)s->pixels + (s->pitch * (y - 1));
+		psd = (Uint8 *)s->pixels + (s->pitch * (y + 1));
+		psl = (Uint8 *)s->pixels + (s->pitch * y);
+		psr = (Uint8 *)s->pixels + (s->pitch * y) + 2;
+		pt = (Uint8 *)t->pixels + (t->pitch * y);
+
+		for(x = 1; x < (s->w - 1); x++) {
+			pixel = *(Uint32 *)ps;
+			*(Uint32 *)(s) = pixel;
+			ps += bpp;
+			psu += bpp;
+			psd += bpp;
+			psl += bpp;
+			psr += bpp;
+			pt += bpp;
+		}
+	}
+	
+}
+#endif
 
 static inline Uint32 get_pixel(const SDL_Surface* restrict surface, const int x, const int y) {
 	return *(Uint32 *)((Uint8 *)surface->pixels + (y * surface->pitch) + (x * 4));

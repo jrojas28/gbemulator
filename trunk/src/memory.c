@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "memory.h"
+#include "core.h"
 #include "cart.h"
 #include "display.h"
 #include "joypad.h"
@@ -45,8 +46,8 @@ Byte* himem = NULL;
 
 unsigned int iram_bank = 1;
 
-extern enum Console console;
-extern enum ConsoleMode console_mode;
+extern int console;
+extern int console_mode;
 
 unsigned mem_map[256];
 
@@ -58,7 +59,7 @@ void memory_init(void) {
 void memory_reset(void) {
 	if (internal0 != NULL)
 		free(internal0);
-	if ((console == GBC) || (console == GBA)) {
+	if ((console = CONSOLE_GBC) || (console = CONSOLE_GBA)) {
 		internal0 = malloc(sizeof(Byte) * IMEM_SIZE_GBC);
 		memset(internal0, 0, IMEM_SIZE_GBC);
 	} else {
@@ -132,15 +133,19 @@ void writeb(Word address, Byte value) {
 	else if (address < MEM_IO + SIZE_IO) {
 	if (address == HWREG_KEY1)
 		fprintf(stderr, "KEY1: VALUE: %hhx\n", value);
+		/* special writes here */
 		switch (address) {
-        /* the bottom 3 bits of STAT are read only.	*/
 			case HWREG_STAT:
+			/* the bottom 3 bits of STAT are read only.	*/
 				himem[address - MEM_IO] = (himem[address - MEM_IO] & 0x07) 
                 	| (value & 0xF8);
 				return;
 				break;
-		/* the top bit of KEY1 is read only */
+			case HWREG_LCDC:
+				set_lcdc(value);
+				break;
 			case HWREG_KEY1:
+				/* the top bit of KEY1 is read only */
 				himem[address - MEM_IO] = (himem[address - MEM_IO] & 0x80) | (value & 0x7f);
 				return;
                 break;
@@ -149,22 +154,23 @@ void writeb(Word address, Byte value) {
 				break;
 			default:
 				himem[address - MEM_IO] = value;
+				break;
 		}
-
+		/* sound registers are dealt with in the sound code */
 		if ((address >= 0xff10) && (address < 0xff30)) {
 			write_sound(address, value);
 			return;
 		}
+		/* sound wave data is dealt with in the sound code */
 		if ((address >= 0xff30) && (address  <= 0xff3f)) {
 			write_wave(address, value);
 			return;
 		}
 
-
 		switch(address) {
 			case HWREG_DIV:
 				// If DIV is written to, it is set to 0.
-				himem[address - MEM_IO] = 0;			
+				himem[address - MEM_IO] = 0;
 				break;
 			case HWREG_BGP:
 				update_bg_palette();
@@ -185,30 +191,36 @@ void writeb(Word address, Byte value) {
 			case HWREG_LYC:
 				write_io(HWREG_STAT, check_coincidence(read_io(HWREG_LY), read_io(HWREG_STAT)));
 				break;
+			case HWREG_SC:
+				/* no other gameboy is connected: 'receive' 0xff */
+				if ((value & 0x80) && (value & 0x01)) {
+					write_io(HWREG_SB, 0xff);
+					write_io(HWREG_SC, value & (~0x80));
+					raise_int(INT_SERIAL);
+				}
+				break;
 			case HWREG_SVBK:
 				/* adjust internal ram bank in gameboy color mode */
-				if (((console == GBC) || (console == GBA)) && (console_mode == GBC_ENABLED)) {
+				if (console_mode == MODE_GBC_ENABLED) {
 					iram_bank = value & 0x07;
 					if (iram_bank == 0)
 						iram_bank = 1;
 					set_vector_block(MEM_INTERNAL_SW, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_SW);
 					set_vector_block(MEM_INTERNAL_ECHO + SIZE_INTERNAL_0, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_ECHO - SIZE_INTERNAL_0);
 				}
-				//fprintf(stderr, "iram_bank %u\n", iram_bank);
 				break;
 			case HWREG_VBK:
 				/* adjust vram bank */
-				if (((console == GBC) || (console == GBA)) && (console_mode == GBC_ENABLED))
+				if (console_mode == MODE_GBC_ENABLED)
 					set_vram_bank(value & 0x01);
-				//fprintf(stderr, "vram_bank %hhx ", value & 0x01);
+				break;
 			case HWREG_HDMA5:
-				if (((console == GBC) || (console == GBA)) && (console_mode == GBC_ENABLED))
+				/* initiate gbc hdma */
+				if (console_mode == MODE_GBC_ENABLED)
 					start_hdma(value);
 				break;
-			break;
 		}
 		return;
-
 	}
 	// internal ram area 1
 	else {
@@ -218,17 +230,34 @@ void writeb(Word address, Byte value) {
 }
 
 void memory_save(void) {
-	save_memory("iram", internal0, SIZE_INTERNAL_0);
+	if ((console = CONSOLE_GBC) || (console = CONSOLE_GBA))
+		save_memory("iram", internal0, IMEM_SIZE_GBC);
+	else
+		save_memory("iram", internal0, IMEM_SIZE_DMG);
+
 	save_memory("himem", himem, SIZE_HIMEM);
+	save_uint("iram_bank", iram_bank);
 }
 
 void memory_load(void) {
-	load_memory("iram", internal0, SIZE_INTERNAL_0);
+	memory_reset();
+	
+	if ((console = CONSOLE_GBC) || (console = CONSOLE_GBA))
+		load_memory("iram", internal0, IMEM_SIZE_GBC);
+	else
+		load_memory("iram", internal0, IMEM_SIZE_DMG);
+
 	load_memory("himem", himem, SIZE_HIMEM);
+	iram_bank = load_uint("iram_bank");
+
 
 	set_vector_block(MEM_INTERNAL_0, internal0, SIZE_INTERNAL_0);
-	set_vector_block(MEM_INTERNAL_ECHO, internal0, SIZE_INTERNAL_ECHO);
+	set_vector_block(MEM_INTERNAL_SW, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_SW);
+	set_vector_block(MEM_INTERNAL_ECHO, internal0, SIZE_INTERNAL_0);
+	set_vector_block(MEM_INTERNAL_ECHO + SIZE_INTERNAL_0, internal0 + (iram_bank * 0x1000), SIZE_INTERNAL_ECHO - SIZE_INTERNAL_0);
 	set_vector_block(MEM_IO, himem, SIZE_HIMEM);
+
+
 }
 
 
