@@ -48,8 +48,8 @@ static const Byte sg_data[] ="\xce\xed\x66\x66\xcc\x0d\x00\x0b\x03\x73\x00\x83"
                              "\xdc\xcc\x6e\xe6\xdd\xdd\xd9\x99\xbb\xbb\x67\x63"
                              "\x6e\x0e\xec\xcc\xdd\xdc\x99\x9f\xbb\xb9\x33\x3e";
 
-extern enum Console console;
-extern enum ConsoleMode console_mode;
+extern int console;
+extern int console_mode;
 
 int load_rom(const char* fn) {
 	int i;
@@ -92,7 +92,7 @@ int load_rom(const char* fn) {
 	
 	c = fread(cart.rom, 1, cart.rom_size, rom_file);
 	if (c != cart.rom_size) {
-		fprintf(stderr, "file read error: %u of %u bytes read\n", c, cart.rom_size);
+		fprintf(stderr, "file read error: %zu  of %u bytes read\n", c, cart.rom_size);
 		perror("fread");
 		return -1;
 	}
@@ -122,22 +122,22 @@ int load_rom(const char* fn) {
 	/* detect colour gameboy cartridge */
 	switch (cart.rom[CART_COLOR]) {
 		case 0x80:
-			if (console == AUTO)
-				console = GBC;
-			if ((console == GBC) || (console == GBA))
-				console_mode = GBC_ENABLED;
+			if (console == CONSOLE_AUTO)
+				console = CONSOLE_GBC;
+			if ((console == CONSOLE_GBC) || (console == CONSOLE_GBA))
+				console_mode = MODE_GBC_ENABLED;
 			break;
 		case 0xC0:
-			if (console == AUTO)
-				console = GBC;
-			if ((console == GBC) || (console == GBA))
-				console_mode = GBC_ENABLED;
+			if (console == CONSOLE_AUTO)
+				console = CONSOLE_GBC;
+			if ((console == CONSOLE_GBC) || (console == CONSOLE_GBA))
+				console_mode = MODE_GBC_ENABLED;
 			break;
 		default:
-			if (console == AUTO)
-				console = DMG;
-			if ((console == GBC) || (console == GBA))
-				console_mode = DMG_EMU;
+			if (console == CONSOLE_AUTO)
+				console = CONSOLE_DMG;
+			if ((console == CONSOLE_GBC) || (console == CONSOLE_GBA))
+				console_mode = MODE_DMG_EMU;
 			break;
 	}
 	
@@ -221,23 +221,23 @@ int load_rom(const char* fn) {
 			break;
 		case 0x1F:
 			// pocket camera.
-			printf("pocket camera rom detected - not implemented\n");
+			fprintf(stderr, "pocket camera rom detected - not implemented\n");
 			break;
 		case 0xFD:
 			// bandai TAMA5
-			printf("Bandai TAMA5 detected - not implemented\n");
+			fprintf(stderr, "Bandai TAMA5 detected - not implemented\n");
 			break;
 		case 0xFE:
 			// hudson HuC-3
-			printf("Hudson HuC-3 detected - not implemented\n");
+			fprintf(stderr, "Hudson HuC-3 detected - not implemented\n");
 			break;
 		case 0xFF:
 			// hudson HuC-1
-			printf("Hudson HuC-1 detected - not implemented\n");
+			fprintf(stderr, "Hudson HuC-1 detected - not implemented\n");
 			break;
 		default:
 			cart.mbc = 0;
-			printf("unrecognised cartridge type. assuming rom only and continuing anyway...\n");
+			fprintf(stderr, "unrecognised cartridge type. assuming rom only and continuing anyway...\n");
 			break;
 	}
 
@@ -507,22 +507,16 @@ void write_rom(Word address, Byte value) {
 		}
 		// mbc5 rom bank selection
 		if ((address >= 0x2000) && (address < 0x3000)) {
-			//fprintf(stderr, "LOW: before: %x", cart.rom_bank);
 			cart.rom_bank = (cart.rom_bank & (~0xff)) | value;
 			if (cart.rom_bank == 0)
 				cart.rom_bank = 1;
-			//fprintf(stderr, "\tafter: %x", cart.rom_bank);
-			//fprintf(stderr, "\tvalue: %hhx\n", value);
 			set_switchable_rom();
 			return;
 		}
 		if ((address >= 0x3000) && (address < 0x4000)) {
-			fprintf(stderr, "HIGH: before: %x", cart.rom_bank);
 			cart.rom_bank = (cart.rom_bank & 0xff) | ((value & 0x01) << 8);
 			if (cart.rom_bank == 0)
 				cart.rom_bank = 1;
-			fprintf(stderr, "\tafter: %x", cart.rom_bank);
-			fprintf(stderr, "\tvalue: %hhx\n", value);
 			set_switchable_rom();
 			return;
 		}
@@ -530,7 +524,6 @@ void write_rom(Word address, Byte value) {
 		// mbc5 ram bank selection
 			if ((address >= 0x4000) && (address < 0x6000)) {
 			cart.ram_bank = value & 0x0f;
-			fprintf(stderr, "ram bank: %x\n", cart.ram_bank);
 			set_switchable_ram();
 			return;
 		}
@@ -646,6 +639,8 @@ void cart_save(void) {
 }
 
 void cart_load(void) {
+	cart_reset();
+		
 	if (cart.ram_size > 0)
 		load_memory("cram", cart.ram, cart.ram_size);
 	cart.rom_bank = load_uint("rom_bank");

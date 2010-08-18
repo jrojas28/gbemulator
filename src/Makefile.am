@@ -12,7 +12,8 @@ AM_CFLAGS =\
 	 -pedantic\
 	 -g\
 	 -std=c99\
-	 -pg
+	 -pg\
+	 -O2
 
 bin_PROGRAMS = gbem
 

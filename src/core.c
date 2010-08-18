@@ -101,7 +101,9 @@ static inline void ret();
 
 static inline void handle_interrupts();
 
-extern enum Console console;
+extern int console;
+extern int console_mode;
+
 
 CoreState core;
 int debugging = 0;
@@ -1369,7 +1371,7 @@ int execute_cycles(int max_cycles) {
 				++REG_PC;		/* skip over the 0x00 */
 				/* has a speed switch been requested? */
 				if ((read_io(HWREG_KEY1) & 0x01) && 
-						((console == GBC) || (console == GBA))) {
+						(console_mode = MODE_GBC_ENABLED)) {
 				fprintf(stderr, "speed switch");
 					if (core.frequency == FREQ_NORMAL) {
 						core.frequency = FREQ_DOUBLE;
@@ -1659,15 +1661,16 @@ void core_reset() {
 
 	/* different consoles have different initial values for A and B */
 	switch(console) {
-		case DMG:
+		case CONSOLE_DMG:
 			REG_A = 0x01;
 			break;
-		case POCKET:
+		case CONSOLE_POCKET:
 			REG_A = 0xff;
 			break;
-		case GBA:
+		case CONSOLE_GBA:
 			REG_B = 0x01;
-		case GBC:
+			/* fall through */
+		case CONSOLE_GBC:
 			REG_A = 0x11;
 			break;
 		default:
@@ -1714,7 +1717,7 @@ void core_reset() {
 
 	write_io(HWREG_KEY1, 	0x00);
 	write_io(HWREG_SVBK, 	0x00);
-	write_io(HWREG_HDMA5, 	0x80);
+	write_io(HWREG_HDMA5, 	0xff);
 	
 	core.frequency = FREQ_NORMAL;
 }
@@ -2298,6 +2301,10 @@ void core_save() {
 	save_int("is_halted", core.is_halted);
 	save_int("is_stopped", core.is_stopped);
 	save_int("ime", core.ime);
+	save_uint("frequency", core.frequency);
+	
+	save_int("console", console);
+	save_int("console_mode", console_mode);
 }
 
 void core_load() {
@@ -2313,12 +2320,16 @@ void core_load() {
 	core.reg_pc = load_word("reg_pc");
 	core.flag_z = load_int("flag_z");
 	core.flag_n = load_int("flag_n");
-	core.flag_h = load_int("flag_h");	
+	core.flag_h = load_int("flag_h");
 	core.flag_c = load_int("flag_c");
 	core.ei = load_int("ei");
 	core.is_halted = load_int("is_halted");
 	core.is_stopped = load_int("is_stopped");
 	core.ime = load_int("ime");
+	core.frequency = load_uint("frequency");
+	
+	console = load_int("console");
+	console_mode = load_int("console_mode");
 }
 
 

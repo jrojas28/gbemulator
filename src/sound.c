@@ -25,12 +25,9 @@
  */
  
 // TODOs
-// subsequent sweeps should not use the new frequency!
 // make channel 1 not init if it will immediately overflow the frequency on sweep
 // upon channel init, wave position is not reset: delayed 1/12 of cycle.
 // if sound power is off to sound, register writes are ignored (except to wave pattern + NR52)
-// initialise wave pattern mem with: 0xac, 0xdd, 0xda, 0x48, 0x36, 0x02, 0xcf, 0x16, 0x2c, 0x04, 0xe5, 0x2c, 0xac, 0xdd, 0xda, 0x48 for R-TYPE
-// for gbc, initialise wave pattern mem with: 00 FF 00 FF 00 FF 00 FF 00 FF 00 FF 00 FF 00 FF
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,13 +35,14 @@
 #include <assert.h>
 #include <portaudio.h>
 #include <string.h>
+#include "gbem.h"
 #include "sound.h"
 #include "memory.h"
 #include "save.h"
 
 static char *lfsr_7;
 static char *lfsr_15;
-static double sample_rate = 22050;
+static double sample_rate = 44100;
 static PaStream *stream;
 static SoundData sound;
 
@@ -58,6 +56,89 @@ static int call_back(const void *input_buffer, void *output_buffer,
 static inline float gb_freq_to_freq(unsigned int gb_frequency);
 static inline void mark_channel_on(unsigned int channel);
 static inline void mark_channel_off(unsigned int channel);
+
+// initialise wave pattern mem with: 0xac, 0xdd, 0xda, 0x48, 0x36, 0x02, 0xcf, 0x16, 0x2c, 0x04, 0xe5, 0x2c, 0xac, 0xdd, 0xda, 0x48 for R-TYPE
+// for gbc, initialise wave pattern mem with: 00 FF 00 FF 00 FF 00 FF 00 FF 00 FF 00 FF 00 FF
+
+
+static const unsigned char dmg_wave[] = {
+	0xac, 0xdd, 0xda, 0x48, 0x36, 0x02, 0xcf, 0x16, 
+	0x2c, 0x04, 0xe5, 0x2c, 0xac, 0xdd, 0xda, 0x48
+	};
+
+static const unsigned char gbc_wave[] = {
+	0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 
+	0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff
+	};
+
+
+/*
+
+/----------------------\
+< Duty Cycle Generator >
+\----------------------/
+The duty cycle generator is a 3-bit (down?) counter which produces output
+depending on the result of some binary operations against the bits of the
+counter, the operations selectable by changing the duty cycle bits in 
+register.
+
+
+ Channels 1,2 - $FF11(NR11)[sq1], $FF16(NR21)[sq2]
+---------------------------------------------
+7-6	Wave pattern duty
+
+The resulting waves are:
+
+Bits  Cyc%   0 1 2 3 4 5 6 7
+00  : 12.5%  ________==______
+01  : 25%    ________====____
+10  : 50%    ____========____
+11  : 75%    ========____====
+
+= is High
+_ is Low
+
+Note that 75% is just a binary NOT against 25%, and that the two are almost
+indistinguishable to the human ear.
+
+The duty cycle generator is clocked by the output of the frequency counter 
+for
+channels 1 and 2.
+
+*/
+
+#define HIGH	15
+#define LOW		-15
+
+static const char sq_wave[4][32] = {
+	{
+	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
+	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
+	HIGH, HIGH, HIGH, HIGH, LOW , LOW , LOW , LOW ,
+	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
+	},
+	{
+	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
+	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
+	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
+	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
+	},
+	{
+	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
+	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
+	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
+	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
+	},
+	{
+	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
+	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
+	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
+	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
+	}
+};
+
+extern int console;
+extern int console_mode;
 
 void sound_init(void) {
 	unsigned char r7;
@@ -93,28 +174,20 @@ void sound_init(void) {
 			lfsr_15[i] = -1;
 	}
 	
-	/*
-	for (i = 0; i < 32; i++) {
-		//sound.channel_3.samples[i] = sin((i * 2 * M_PI) / 32) * 15;
-		//printf("%hhd\n", sound_data.channel_3.samples[i]);
-	}
-	*/
-	
 	err = Pa_Initialize();
 	if (err != paNoError) {
 		Pa_Terminate();
 		fprintf(stderr, "could not initialise portaudio: %s\n", Pa_GetErrorText(err));
 		exit(1);
-    }
-    
-    
+	}
+
 	output_parameters.device = Pa_GetDefaultOutputDevice();
 	//pdi = Pa_GetDeviceInfo(output_parameters.device);
-    output_parameters.channelCount = 2;
-    output_parameters.hostApiSpecificStreamInfo = NULL;
-    output_parameters.sampleFormat = paInt8;
-    output_parameters.suggestedLatency = Pa_GetDeviceInfo(output_parameters.device)->defaultLowOutputLatency;
-    
+	output_parameters.channelCount = 2;
+	output_parameters.hostApiSpecificStreamInfo = NULL;
+	output_parameters.sampleFormat = paInt8;
+	output_parameters.suggestedLatency = Pa_GetDeviceInfo(output_parameters.device)->defaultLowOutputLatency;
+
 	err = Pa_OpenStream(&stream,
 						NULL, /* no input */
 						&output_parameters,
@@ -124,7 +197,7 @@ void sound_init(void) {
 						call_back,
 						&sound);
 
-    if (err != paNoError) {
+	if (err != paNoError) {
 		Pa_Terminate();
 		fprintf(stderr, "could not open output stream: %s\n", Pa_GetErrorText(err));
 		exit(1);
@@ -172,7 +245,7 @@ void start_sound(void) {
 	PaError err;
 	assert(!sound.is_on);
 	err = Pa_StartStream(stream);
-    if (err != paNoError) {
+	if (err != paNoError) {
 		Pa_Terminate();
 		fprintf(stderr, "could not start output stream: %s\n", Pa_GetErrorText(err));
 		exit(1);
@@ -182,6 +255,7 @@ void start_sound(void) {
 
 // fill with sensible defaults...
 void sound_reset(void) {
+	int i;
 	sound.volume_left = 7; // FIXME
 	sound.volume_right = 7;
 	
@@ -208,6 +282,14 @@ void sound_reset(void) {
 	sound.channel_3.is_on = 0;
 	sound.channel_4.is_on = 0;
 
+	if ((console == CONSOLE_GBC) || (console == CONSOLE_GBC)) {
+		for (i = 0; i < 16; i++)
+			write_wave(0xff30 + i, gbc_wave[i]);
+	} else {
+		for (i = 0; i < 16; i++)
+			write_wave(0xff30 + i, dmg_wave[i]);
+	}
+
 	if (!sound.is_on) {
 		start_sound();
 	}
@@ -223,9 +305,9 @@ void write_sound(Word address, Byte value) {
 	switch (address) {
 		case HWREG_NR10:	// channel 1 sweep
 			// FIXME should this be commented??
-			//sound.channel_1.sweep.time = convert_time((float)((value & 70) >> 4) / 128.0f);
-			//sound.channel_1.sweep.sign = (value & 0x08) ? -1.0f : 1.0f;
-			//sound.channel_1.sweep.number = value & 0x07;
+			sound.channel_1.sweep.time = convert_time((float)((value & 70) >> 4) / 128.0f);
+			sound.channel_1.sweep.sign = (value & 0x08) ? -1.0f : 1.0f;
+			sound.channel_1.sweep.number = value & 0x07;
 			//printf("%hhu\n", value);
 			break;
 		case HWREG_NR11: 	// channel 1 length / cycle duty
@@ -250,7 +332,7 @@ void write_sound(Word address, Byte value) {
 			//if (!(value & 0xf0))
 			//	sound.channel_1.envelope.volume = 0;
 			//	sound.channel_1.envelope.sign = (value & 0x08) ? +1.0f : -1.0f;
-			//	sound.channel_1.envelope.number = value & 0x07;
+			sound.channel_1.envelope.number = value & 0x07;
 			//	sound.channel_1.envelope.time = convert_time((float)sound.channel_1.envelope.number / 64.0f);
 			break;
 		case HWREG_NR13:	// frequency lo
@@ -277,9 +359,9 @@ void write_sound(Word address, Byte value) {
 				sound.channel_1.envelope.i = 0;
 				sound.channel_1.envelope.j = 0;
 				b = read_io(HWREG_NR10);
-				sound.channel_1.sweep.time = convert_time((float)((b & 70) >> 4) / 128.0f);
-				sound.channel_1.sweep.sign = (b & 0x08) ? -1.0f : 1.0f;
-				sound.channel_1.sweep.number = b & 0x07;
+				//sound.channel_1.sweep.time = convert_time((float)((b & 70) >> 4) / 128.0f);
+				//sound.channel_1.sweep.sign = (b & 0x08) ? -1.0f : 1.0f;
+				//sound.channel_1.sweep.number = b & 0x07;
 				sound.channel_1.sweep.i = 0;
 				sound.channel_1.sweep.j = 0;
 				sound.channel_1.sweep.shadow = sound.channel_1.gb_frequency;
@@ -346,11 +428,13 @@ void write_sound(Word address, Byte value) {
 		case HWREG_NR33:	/* frequency lo */
 			frequency = (unsigned int)value | ((unsigned int)(read_io(HWREG_NR34) & 0x07) << 8);
 			sound.channel_3.period = frequency_to_period(65536 / (float)(2048 - frequency));
+			assert(sound.channel_3.period != 0);
 			break;
 		case HWREG_NR34:	/* frequency hi, init, counter selection */
 			sound.channel_3.is_continuous = (value & 0x40) ? 0 : 1;
 			frequency = (unsigned int)read_io(HWREG_NR33) | ((unsigned int)(value & 0x07) << 8);
 			sound.channel_3.period = frequency_to_period(65536 / (float)(2048 - frequency));
+			assert(sound.channel_3.period != 0);			
 			if (value & 0x80) {
 				//fprintf(stderr, "TRIGGER3\n");
 				mark_channel_on(3);
@@ -440,7 +524,11 @@ void write_wave(Word address, Byte value) {
  * converts a frequency into a period (in samples NOT seconds!!!) 
  */
 static inline unsigned int frequency_to_period(float frequency) {
-	return (float)sample_rate / frequency;
+	unsigned int period = (float)sample_rate / frequency;
+	/* avoid divide by 0s. */
+	if (period == 0) 
+		period = 1;
+	return period;
 } 
 
 /*
@@ -555,8 +643,8 @@ static int call_back(const void *input_buffer, void *output_buffer,
 					if (data->channel_1.envelope.volume > 15)
 						data->channel_1.envelope.volume = 15;
 					if (data->channel_1.envelope.volume == 0) {
-						data->channel_1.is_on = 0;
-						mark_channel_off(1); // FIXME should this be here??
+						//data->channel_1.is_on = 0;
+						//mark_channel_off(1); // FIXME should this be here??
 					}
 					data->channel_1.envelope.i = 0;
 					++data->channel_1.envelope.j;
@@ -597,8 +685,8 @@ static int call_back(const void *input_buffer, void *output_buffer,
 					if (data->channel_2.envelope.volume > 15)
 						data->channel_2.envelope.volume = 15;
 					if (data->channel_2.envelope.volume == 0) {
-						data->channel_2.is_on = 0;
-						mark_channel_off(2); // FIXME should this be here??
+						//data->channel_2.is_on = 0;
+						//mark_channel_off(2); // FIXME should this be here??
 					}
 					data->channel_2.envelope.i = 0;
 					++data->channel_2.envelope.j;
@@ -672,8 +760,8 @@ static int call_back(const void *input_buffer, void *output_buffer,
 					if (data->channel_4.envelope.volume > 15)
 						data->channel_4.envelope.volume = 15;
 					if (data->channel_2.envelope.volume == 0) {
-						data->channel_4.is_on = 0;
-						mark_channel_off(4); // FIXME should this be here??
+						//data->channel_4.is_on = 0;
+						//mark_channel_off(4); // FIXME should this be here??
 					}
 					data->channel_4.envelope.i = 0;
 					++data->channel_4.envelope.j;

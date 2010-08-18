@@ -32,5 +32,8 @@
 
 void scale_nn(SDL_Surface *src, SDL_Surface *dest);
 void scale_nn2x(SDL_Surface* restrict src, SDL_Surface* restrict dest);
+void scale_nn3x(SDL_Surface* restrict src, SDL_Surface* restrict dest);
+void scale_nn4x(SDL_Surface* restrict src, SDL_Surface* restrict dest);
+void blur(SDL_Surface* restrict s);
 
 #endif /* _SCALE_H */

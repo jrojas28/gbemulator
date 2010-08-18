@@ -54,8 +54,8 @@
 #define TIMING_INTERVAL		(1000000000 / TIMING_GRANULARITY)
 #define MAX_CPU_CYCLES		200
 
-enum Console console = AUTO;
-enum ConsoleMode console_mode = DMG_EMU;
+int console;
+int console_mode;
 
 extern CoreState core;
 
@@ -94,6 +94,8 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 	memory_init();
+	console = CONSOLE_AUTO;
+	console_mode = MODE_DMG;
 	load_rom(argv[1]);
 	display_init();
 	joypad_init();
@@ -106,16 +108,15 @@ int main(int argc, char *argv[]) {
 	delay = 1;
 	is_delayed = 0;
 	real_time = SDL_GetTicks() * 1000000;
-	real_time_passed;
 	delays = 0;
 	frame_time = SDL_GetTicks();
 	// main loop
 	// TODO intelligent algorithm for working out number of cycles to execute
 	// based on interrupt predictions...
 	while(1) {
-		if ((!is_delayed) && (!is_paused)) {
+		if ((!is_paused) && (!is_delayed)) {
 			for (i = 0; i < 10; i++) {
-				cycles = execute_cycles(200);
+				cycles = execute_cycles(40);
 				core_period = (cycles >> 2) * (1000000000/(1048576));
 				core_time += core_period;
 				timer_check(cycles * core.frequency);
@@ -204,4 +205,24 @@ void quit(void) {
 	display_fini();
 	memory_fini();
 	sound_fini();
+}
+
+void new_frame(void) {
+#if 0
+	const unsigned fps = 60;		/* 59.72 but meh */
+	const unsigned frame_us = (1000000 / fps);
+	static Uint32 last_time;
+	static int frame = 0;
+	Uint32 time = SDL_GetTicks();
+	if (frame == 0)
+		last_time = SDL_GetTicks();
+	if (((time - last_time) * 1000) < frame_us * (frame + 1)) {
+		fprintf(stderr, "delaying: %ums\n", (frame_us * (frame + 1) - ((time - last_time) * 1000)) / 1000);
+		SDL_Delay((frame_us * (frame + 1) - ((time - last_time) * 1000)) / 1000);
+		
+	}
+	++frame;
+	if (frame == fps)
+		frame = 0;
+#endif
 }

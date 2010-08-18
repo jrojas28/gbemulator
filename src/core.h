@@ -35,10 +35,10 @@
 #include "gbem.h"
 #include "memory.h"
 
-#define	INT_VBLANK	0x01
-#define	INT_STAT 	0x02
-#define	INT_TIMER 	0x04
-#define	INT_SERIAL 	0x08
+#define INT_VBLANK	0x01
+#define INT_STAT 	0x02
+#define INT_TIMER 	0x04
+#define INT_SERIAL 	0x08
 #define INT_BUTTON 	0x10
 
 #define FREQ_NORMAL	1

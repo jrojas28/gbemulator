@@ -44,7 +44,6 @@ void timer_reset(void) {
 }
 
 void timer_check(unsigned int period) {
-	div_time += period;
 	// check if tima timer is enabled
 	if (read_io(HWREG_TAC) & 0x04) {
 		tima_time += period;
@@ -63,8 +62,9 @@ void timer_check(unsigned int period) {
 	} else {
 		tima_time = 0;
 	}
-	
-	while (div_time >= get_div_period())	{
+
+	div_time += period;	
+	while (div_time >= get_div_period()) {
 		write_io(HWREG_DIV, read_io(HWREG_DIV) + 1);
 		div_time -= get_div_period();
 	}

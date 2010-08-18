@@ -208,7 +208,8 @@ AM_CFLAGS = \
 	 -pedantic\
 	 -g\
 	 -std=c99\
-	 -pg
+	 -pg\
+	 -O2
 
 gbem_SOURCES = \
 	main.c\
