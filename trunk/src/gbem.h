@@ -33,7 +33,10 @@
 #include "config.h"
 #else
 #include "windows_config.h"
-/* MSC does not support these C99 features properly */
+
+/* MSC does not support these C99 features properly.
+ * It really is a terrible compiler....
+ */
 #define inline __forceinline
 #define restrict 
 #define snprintf _snprintf

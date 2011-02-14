@@ -80,11 +80,6 @@ void display_init(void) {
 	display.y_res = DISPLAY_H * 2;
 	display.bpp = 32;
 
-	if(SDL_Init(SDL_INIT_VIDEO) < 0) {
-		fprintf(stderr,"sdl video initialisation failed: %s\b", SDL_GetError());
-		exit(1);
-	}
-
 	display.screen = SDL_SetVideoMode(display.x_res, display.y_res, display.bpp, SDL_SWSURFACE);
 	if (display.screen == NULL) {
 		fprintf(stderr, "video mode initialisation failed\n");
@@ -165,7 +160,7 @@ void display_fini(void) {
 	free(display.tiles_tdt_0);
 	free(display.tiles_tdt_1);
 	free(display.sprites);
-	SDL_Quit();
+
 }
 
 
@@ -1084,3 +1079,4 @@ void display_load(void) {
 		sprite_set_height(&display.sprites[i], display.sprite_height);
 	}
 }
+

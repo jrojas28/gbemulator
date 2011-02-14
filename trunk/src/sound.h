@@ -27,97 +27,97 @@
 #ifndef _SOUND_H
 #define _SOUND_H
 
+#include <stdbool.h>
+
 #include "gbem.h"
 
-#define HIGH 				127
-#define LOW 				(-128)
-#define GROUND				0
-#define CHANNELS 			4
-#define LFSR_7_SIZE			127
-#define LFSR_15_SIZE		32767
-#define LFSR_7				0
-#define LFSR_15				1
-
+void sound_update();
 
 typedef struct {
-	unsigned int number;
-	unsigned int time;
-	signed int shadow;
-	signed int sign;
-	unsigned int i, j;
-} Sweep;
+	unsigned duty;
+	unsigned i;
+} DutyGenerator;
 
 typedef struct {
-	unsigned int number;
-	unsigned int time;
-	char volume;
-	char sign;
-	unsigned int i, j;
+	unsigned volume;
+	bool is_increasing;
+	unsigned length_counter;
+	unsigned length;
+	bool is_zombie;
+	unsigned i;
 } Envelope;
 
 typedef struct {
-	unsigned int length;
-	float period;
-	signed int gb_frequency;
-	unsigned int i;
-	int is_on;
-	int is_continuous;
-	int is_on_left;
-	int is_on_right;
-	float duty;
+	unsigned hidden_freq;
+	unsigned time_counter;
+	unsigned time;
+	bool is_decreasing;
+	unsigned shift_number;
+	unsigned i;
+} Sweep;
+
+
+typedef struct {
+	DutyGenerator duty;
+	Envelope envelope;
 	Sweep sweep;
+	unsigned length_counter;
+	unsigned i;
+	unsigned freq;
+	unsigned period;
+	unsigned period_counter;
+	short last_delta_right;
+	short last_delta_left;
+	bool is_continuous;
+	bool is_on;
+	
+	bool is_on_left;
+	bool is_on_right;
+} Channel1;
+
+typedef struct {
+	DutyGenerator duty;
 	Envelope envelope;
-} Channel_1;
+	unsigned length_counter;
+	unsigned i;
+	unsigned freq;
+	unsigned period;
+	unsigned period_counter;
+	short last_delta_right;
+	short last_delta_left;
+	bool is_continuous;
+	bool is_on;
+	
+	bool is_on_left;
+	bool is_on_right;
+} Channel2;
 
 typedef struct {
-	unsigned int length;
-	float period;
-	signed int gb_frequency;
-	float frequency;
-	unsigned int i;
-	int is_on;
-	int is_continuous;
-	int is_on_left;
-	int is_on_right;
-	float duty;
-	Envelope envelope;
-} Channel_2;
+	short* wave_data;
+	unsigned wave_i;
+	unsigned volume;
+	unsigned length_counter;
+	unsigned i;
+	unsigned freq;
+	unsigned period;
+	unsigned period_counter;
+	short last_delta_right;
+	short last_delta_left;
+	bool is_continuous;
+	bool is_on;
+	
+	bool is_on_left;
+	bool is_on_right;
+} Channel3;
 
 typedef struct {
-	unsigned int length;
-	unsigned int period;
-	float frequency;
-	unsigned int i, j;
-	signed char samples[32];
-	unsigned char volume;
-	int is_on_left;
-	int is_on_right;
-	int is_on;
-	int is_continuous;
-} Channel_3;
-
-typedef struct {
-	unsigned int length;
-	unsigned int period;
-	unsigned int i, j;
-	unsigned int counter;
-	int is_on_left;
-	int is_on_right;
-	int is_on;
-	int is_continuous;
-	Envelope envelope;
-} Channel_4;
-
-typedef struct {
-	Channel_1 channel_1;
-	Channel_2 channel_2;
-	Channel_3 channel_3;
-	Channel_4 channel_4;	
-	float volume_left;
-	float volume_right;
-	int is_on;
+	bool is_on;
+	unsigned right_level;
+	unsigned left_level;
+	Channel1 channel1;
+	Channel2 channel2;
+	Channel3 channel3;
 } SoundData;
-
 
 void sound_init(void);
 void sound_fini(void);

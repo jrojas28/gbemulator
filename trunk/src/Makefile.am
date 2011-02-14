@@ -34,6 +34,8 @@ gbem_SOURCES = \
 	timer.h \
 	sound.c \
 	sound.h \
+	blip_buf.c \
+	blip_buf.h \
 	debug.c \
 	debug.h \
 	save.c \

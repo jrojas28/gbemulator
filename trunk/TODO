@@ -1,7 +1,7 @@
 TODO
 	Bugs
 		Fix H/GDMA?
-		Fix sound bugs
+		Fix sound bugs ****************************************************************************************************
 			mostly affects channel 1, some sounds are wrong
 			do high notes sound out of pitch? YES: interpolation needed
 			fix the never ending noise bug (when daisy turns into bug)

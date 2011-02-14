@@ -62,6 +62,7 @@ extern CoreState core;
 void reset(void);
 void quit(void);
 extern int debugging;
+extern int sound_cycles;
 
 int main(int argc, char *argv[]) {
 	int i;
@@ -93,6 +94,12 @@ int main(int argc, char *argv[]) {
 		exit(0);
 	}
 #endif
+
+	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+		fprintf(stderr,"sdl video initialisation failed: %s\b", SDL_GetError());
+		exit(1);
+	}
+
 	memory_init();
 	console = CONSOLE_AUTO;
 	console_mode = MODE_DMG;
@@ -117,10 +124,12 @@ int main(int argc, char *argv[]) {
 		if ((!is_paused) && (!is_delayed)) {
 			for (i = 0; i < 10; i++) {
 				cycles = execute_cycles(40);
+
 				core_period = (cycles >> 2) * (1000000000/(1048576));
 				core_time += core_period;
 				timer_check(cycles * core.frequency);
 				display_update(cycles);
+				sound_update();
 			}
 		}
 		
@@ -201,10 +210,11 @@ void reset(void) {
 }
 
 void quit(void) {
+	sound_fini();
 	unload_rom();
 	display_fini();
 	memory_fini();
-	sound_fini();
+	SDL_Quit();
 }
 
 void new_frame(void) {

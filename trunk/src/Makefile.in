@@ -50,8 +50,8 @@ am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_gbem_OBJECTS = main.$(OBJEXT) core.$(OBJEXT) memory.$(OBJEXT) \
 	cart.$(OBJEXT) display.$(OBJEXT) joypad.$(OBJEXT) \
-	timer.$(OBJEXT) sound.$(OBJEXT) debug.$(OBJEXT) save.$(OBJEXT) \
-	scale.$(OBJEXT)
+	timer.$(OBJEXT) sound.$(OBJEXT) blip_buf.$(OBJEXT) \
+	debug.$(OBJEXT) save.$(OBJEXT) scale.$(OBJEXT)
 gbem_OBJECTS = $(am_gbem_OBJECTS)
 gbem_DEPENDENCIES =
 gbem_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
@@ -129,9 +129,6 @@ PACKAGE_TARNAME = @PACKAGE_TARNAME@
 PACKAGE_URL = @PACKAGE_URL@
 PACKAGE_VERSION = @PACKAGE_VERSION@
 PATH_SEPARATOR = @PATH_SEPARATOR@
-PKG_CONFIG = @PKG_CONFIG@
-PORTAUDIO_CFLAGS = @PORTAUDIO_CFLAGS@
-PORTAUDIO_LIBS = @PORTAUDIO_LIBS@
 RANLIB = @RANLIB@
 SDL_CFLAGS = @SDL_CFLAGS@
 SDL_CONFIG = @SDL_CONFIG@
@@ -228,6 +225,8 @@ gbem_SOURCES = \
 	timer.h \
 	sound.c \
 	sound.h \
+	blip_buf.c \
+	blip_buf.h \
 	debug.c \
 	debug.h \
 	save.c \
@@ -324,6 +323,7 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/blip_buf.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cart.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/debug.Po@am__quote@
