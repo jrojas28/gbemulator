@@ -351,8 +351,6 @@ int load_rom(const char* fn) {
 	
 }
 
-
-
 void cart_reset(void) {
 	// cant reset a nonloaded cartridge
 	assert(cart.is_loaded == 1);
@@ -398,8 +396,13 @@ static void set_switchable_ram(void) {
 						SIZE_RAM_BANK_SW);
 }
 
-// TODO checks for bad bank selection? - this could potentially cause buffer
-// overflows.
+static void mbc3_latch_clock(void) {
+	
+}
+
+/* FIXME: 	check for bad bank selection: prevent overflow exploits
+ * 			implement ram bank disabling/enabling
+ */
 void write_rom(Word address, Byte value) {
 	switch (cart.mbc) {
 		case 1:
@@ -482,9 +485,9 @@ void write_rom(Word address, Byte value) {
 			}
 			// mbc3 ram bank / rtc map selection
 			if ((address >= 0x4000) && (address < 0x6000)) {
-				if ((value >= 0x08) && (value <= 0x0C))
+				if ((value >= 0x08) && (value <= 0x0C)) {
 					cart.mbc3_rtc_map = value;
-				else {
+				} else {
 					cart.ram_bank = value & 0x03;
 					set_switchable_ram();
 				}
@@ -499,6 +502,7 @@ void write_rom(Word address, Byte value) {
 			}
 			break;
 		case 4:
+			/* FIXME: unimplemented */
 			break;
 		case 5:
 		// mbc5 ram bank enable/disable

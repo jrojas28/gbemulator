@@ -24,118 +24,60 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
  
-// TODOs
-// make channel 1 not init if it will immediately overflow the frequency on sweep
-// upon channel init, wave position is not reset: delayed 1/12 of cycle.
-// if sound power is off to sound, register writes are ignored (except to wave pattern + NR52)
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <assert.h>
-#include <portaudio.h>
 #include <string.h>
+#include <SDL/SDL.h>
 #include "gbem.h"
 #include "sound.h"
 #include "memory.h"
 #include "save.h"
+#include "blip_buf.h"
 
-static char *lfsr_7;
-static char *lfsr_15;
-static double sample_rate = 44100;
-static PaStream *stream;
+static short *lfsr_7;
+static short *lfsr_15;
+double sample_rate = 44100;
+static blip_t* blip_left;
+static blip_t* blip_right;
+
 static SoundData sound;
 
-static inline unsigned int frequency_to_period(float frequency);
-static inline unsigned int convert_time(float time);
-static int call_back(const void *input_buffer, void *output_buffer,
-                    unsigned long frames_per_buffer,
-                    const PaStreamCallbackTimeInfo* time_info,
-                    PaStreamCallbackFlags status_flags,
-                    void *user_data);
-static inline float gb_freq_to_freq(unsigned int gb_frequency);
 static inline void mark_channel_on(unsigned int channel);
 static inline void mark_channel_off(unsigned int channel);
+static void callback(void* data, Uint8 *stream, int len);
 
-// initialise wave pattern mem with: 0xac, 0xdd, 0xda, 0x48, 0x36, 0x02, 0xcf, 0x16, 0x2c, 0x04, 0xe5, 0x2c, 0xac, 0xdd, 0xda, 0x48 for R-TYPE
-// for gbc, initialise wave pattern mem with: 00 FF 00 FF 00 FF 00 FF 00 FF 00 FF 00 FF 00 FF
-
+static inline void update_channel1(int clocks);
+static inline void update_channel2(int clocks);
+static inline void update_channel3(int clocks);
+static void sweep_freq();
 
 static const unsigned char dmg_wave[] = {
 	0xac, 0xdd, 0xda, 0x48, 0x36, 0x02, 0xcf, 0x16, 
 	0x2c, 0x04, 0xe5, 0x2c, 0xac, 0xdd, 0xda, 0x48
-	};
+};
 
 static const unsigned char gbc_wave[] = {
 	0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 
 	0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff
-	};
-
-
-/*
-
-/----------------------\
-< Duty Cycle Generator >
-\----------------------/
-The duty cycle generator is a 3-bit (down?) counter which produces output
-depending on the result of some binary operations against the bits of the
-counter, the operations selectable by changing the duty cycle bits in 
-register.
-
-
- Channels 1,2 - $FF11(NR11)[sq1], $FF16(NR21)[sq2]
----------------------------------------------
-7-6	Wave pattern duty
-
-The resulting waves are:
-
-Bits  Cyc%   0 1 2 3 4 5 6 7
-00  : 12.5%  ________==______
-01  : 25%    ________====____
-10  : 50%    ____========____
-11  : 75%    ========____====
-
-= is High
-_ is Low
-
-Note that 75% is just a binary NOT against 25%, and that the two are almost
-indistinguishable to the human ear.
-
-The duty cycle generator is clocked by the output of the frequency counter 
-for
-channels 1 and 2.
-
-*/
-
-#define HIGH	15
-#define LOW		-15
-
-static const char sq_wave[4][32] = {
-	{
-	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
-	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
-	HIGH, HIGH, HIGH, HIGH, LOW , LOW , LOW , LOW ,
-	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
-	},
-	{
-	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
-	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
-	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
-	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
-	},
-	{
-	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
-	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
-	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
-	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
-	},
-	{
-	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
-	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
-	LOW , LOW , LOW , LOW , LOW , LOW , LOW , LOW ,
-	HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH,
-	}
 };
+
+bool sound_enabled;
+
+#define MAX_SAMPLE			32767
+#define MIN_SAMPLE			-32767
+
+#define HIGH				(MAX_SAMPLE / 4)
+#define LOW					(MIN_SAMPLE / 4)
+#define	GRND				0
+#define LFSR_7_SIZE			127
+#define LFSR_15_SIZE		32767
+#define LFSR_7				0
+#define LFSR_15				1
+
+int sound_cycles;
+
 
 extern int console;
 extern int console_mode;
@@ -144,12 +86,10 @@ void sound_init(void) {
 	unsigned char r7;
 	unsigned short r15;
 	int i;
-	PaError err;
-	PaStreamParameters output_parameters;
-	PaStreamInfo* stream_info;
-	/* allocate memory for LFSR tables */
-	lfsr_7 = malloc(LFSR_7_SIZE);
-	lfsr_15 = malloc(LFSR_15_SIZE);
+	SDL_AudioSpec desired;
+	
+	lfsr_7 = malloc(LFSR_7_SIZE * sizeof(short));
+	lfsr_15 = malloc(LFSR_15_SIZE * sizeof(short));
 
 	/* initialise 7 bit LFSR values */
 	r7 = 0xff;
@@ -157,11 +97,10 @@ void sound_init(void) {
 		r7 >>= 1;
 		r7 |= (((r7 & 0x02) >> 1) ^ (r7 & 0x01)) << 7;
 		if (r7 & 0x01)
-			lfsr_7[i] = 1;
+			lfsr_7[i] = HIGH;
 		else
-			lfsr_7[i] = -1;
+			lfsr_7[i] = LOW;
 	}
-
 
 	/* initialise 15 bit LFSR values */
 	r15 = 0xffff;
@@ -169,11 +108,35 @@ void sound_init(void) {
 		r15 >>= 1;
 		r15 |= (((r15 & 0x0002) >> 1) ^ (r15 & 0x0001)) << 15;
 		if (r15 & 0x0001)
-			lfsr_15[i] = 1;
+			lfsr_15[i] = HIGH;
 		else
-			lfsr_15[i] = -1;
+			lfsr_15[i] = LOW;
 	}
 	
+	sound.channel3.wave_data = malloc(32 * sizeof(short));
+	
+	desired.freq = sample_rate;
+	desired.format = AUDIO_S16SYS;
+	desired.channels = 2;
+	desired.samples = 1024;
+	desired.callback = callback;
+	desired.userdata = NULL;
+	
+	if (SDL_OpenAudio(&desired, NULL) < 0) {
+		fprintf(stderr, "couldn't initialise SDL audio: %s\n", SDL_GetError());
+		exit(1);
+   	}
+	fprintf(stdout, "sdl audio initialised.\n");
+	
+	blip_left = blip_new(sample_rate / 10);
+	blip_set_rates(blip_left, 4194304, sample_rate);
+
+	blip_right = blip_new(sample_rate / 10);
+	blip_set_rates(blip_right, 4194304, sample_rate);
+
+	start_sound();
+
+#if 0
 	err = Pa_Initialize();
 	if (err != paNoError) {
 		Pa_Terminate();
@@ -210,79 +173,129 @@ void sound_init(void) {
 			printf("warning: high sound output latency\n");
 		}
 	}
-	
-	sound.volume_left = 7;
-	sound.volume_right = 7;
-	sound.channel_1.is_on = 0;
-	sound.channel_2.is_on = 0;
-	sound.channel_3.is_on = 0;
-	sound.channel_4.is_on = 0;
-	sound.is_on = 0;
-	
+#endif
+
 }
 
 void sound_fini(void) {
-	PaError err;
-	if (sound.is_on) {
+//	PaError err;
+	if (sound_enabled == 1) {
 		stop_sound();
 	}
+	
+/*
 	err = Pa_CloseStream(stream);
-
 	Pa_Terminate();
-
+*/
+	SDL_CloseAudio();
 	free(lfsr_7);
 	free(lfsr_15);
 }
 
 void stop_sound(void) {
-	PaError err;
-	assert(sound.is_on);
-	err = Pa_StopStream(stream);
-	sound.is_on = 0;
+//	PaError err;
+	assert(sound_enabled == 1);
+	SDL_PauseAudio(1);
+	//err = Pa_StopStream(stream);
+	sound_enabled = 0;
 }
 
 void start_sound(void) {
-	PaError err;
-	assert(!sound.is_on);
+//	PaError err;
+	assert(sound_enabled == 0);
+	SDL_PauseAudio(0);
+/*
 	err = Pa_StartStream(stream);
 	if (err != paNoError) {
 		Pa_Terminate();
 		fprintf(stderr, "could not start output stream: %s\n", Pa_GetErrorText(err));
 		exit(1);
 	}
-	sound.is_on = 1;
+*/
+	sound_enabled = 1;
 }
 
-// fill with sensible defaults...
 void sound_reset(void) {
 	int i;
-	sound.volume_left = 7; // FIXME
-	sound.volume_right = 7;
+	write_io(HWREG_NR10, 0x80);
+	write_io(HWREG_NR11, 0xbf);
+	write_io(HWREG_NR12, 0xf3);
+	write_io(HWREG_NR13, 0xff);
+	write_io(HWREG_NR14, 0xbf);
+	/* write_io(HWREG_NR20, 0xff); */
+	write_io(HWREG_NR21, 0x3f);
+	write_io(HWREG_NR22, 0x00);
+	write_io(HWREG_NR23, 0xff);
+	write_io(HWREG_NR24, 0xbf);
+	write_io(HWREG_NR30, 0x7f);
+	write_io(HWREG_NR31, 0xff);
+	write_io(HWREG_NR32, 0x9f);
+	write_io(HWREG_NR33, 0xff);
+	write_io(HWREG_NR34, 0xbf);
+	/* write_io(HWREG_NR40, 0xff); */
+	write_io(HWREG_NR41, 0xff);
+	write_io(HWREG_NR42, 0x00);
+	write_io(HWREG_NR43, 0x00);
+	write_io(HWREG_NR44, 0xbf);
+	write_io(HWREG_NR50, 0x77);
+	write_io(HWREG_NR51, 0xf3);
 	
-	write_sound(HWREG_NR10,	0x80);
-	write_sound(HWREG_NR11,	0xBF);
-	write_sound(HWREG_NR12,	0xF3);
-	write_sound(HWREG_NR14,	0xBF);
-	write_sound(HWREG_NR21,	0x3F);
-	write_sound(HWREG_NR22,	0x00);
-	write_sound(HWREG_NR24,	0xBF);
-	write_sound(HWREG_NR30,	0x7F);
-	write_sound(HWREG_NR31,	0xFF);
-	write_sound(HWREG_NR32,	0x9F);
-	write_sound(HWREG_NR33,	0xBF);
-	write_sound(HWREG_NR41,	0xFF);
-	write_sound(HWREG_NR42,	0x00);
-	write_sound(HWREG_NR43,	0x00);
-	write_sound(HWREG_NR44,	0xBF);
-	write_sound(HWREG_NR50,	0x77);
-	write_sound(HWREG_NR51,	0xF3);
-	write_sound(HWREG_NR52,	0xF1); // TODO DIFFERENT FOR SGB
+	if (console == CONSOLE_SGB)
+		write_io(HWREG_NR52, 0xf0);
+	else
+		write_io(HWREG_NR52, 0xf1);
+	
+	sound.channel1.is_on = 0;
+	sound.channel1.duty.i = 0;
+	sound.channel1.duty.duty = 0;
+	sound.channel1.is_continuous = 0;
+	sound.channel1.is_on_left = 1;
+	sound.channel1.is_on_right = 1;
+	sound.channel1.length_counter = 0;
+	sound.channel1.i = 0;
+	sound.channel1.freq = 0;
+	sound.channel1.period = 0;
+	sound.channel1.period_counter = 0;
+	sound.channel1.envelope.i = 0;
+	sound.channel1.envelope.is_increasing = 0;
+	sound.channel1.envelope.is_zombie = 0;
+	sound.channel1.envelope.length = 0;
+	sound.channel1.envelope.length_counter = 0;
+	sound.channel1.envelope.volume = 15;
+	sound.channel1.last_delta_right = 0;
+	sound.channel1.last_delta_left = 0;
+	
+	sound.channel2.is_on = 0; 	/* set by boot rom? */
+	sound.channel2.duty.i = 0;
+	sound.channel2.duty.duty = 0;
+	sound.channel2.is_continuous = 0;
+	sound.channel2.is_on_left = 1;
+	sound.channel2.is_on_right = 1;
+	sound.channel2.length_counter = 0;
+	sound.channel2.i = 0;
+	sound.channel2.freq = 0;
+	sound.channel2.period = 0;
+	sound.channel2.period_counter = 0;
+	sound.channel2.envelope.i = 0;
+	sound.channel2.envelope.is_increasing = 0;
+	sound.channel2.envelope.is_zombie = 0;
+	sound.channel2.envelope.length = 0;
+	sound.channel2.envelope.length_counter = 0;
+	sound.channel2.envelope.volume = 15;
+	sound.channel2.last_delta_right = 0;
+	sound.channel2.last_delta_left = 0;
+
+	//sound.channel1.envelope.
+	
+
+/*
 	sound.channel_1.is_on = 0;
 	sound.channel_2.is_on = 0;
 	sound.channel_3.is_on = 0;
 	sound.channel_4.is_on = 0;
+*/
 
-	if ((console == CONSOLE_GBC) || (console == CONSOLE_GBC)) {
+	if ((console == CONSOLE_GBC) || (console == CONSOLE_GBA)) {
 		for (i = 0; i < 16; i++)
 			write_wave(0xff30 + i, gbc_wave[i]);
 	} else {
@@ -290,220 +303,141 @@ void sound_reset(void) {
 			write_wave(0xff30 + i, dmg_wave[i]);
 	}
 
-	if (!sound.is_on) {
+	if (!sound_enabled) {
 		start_sound();
 	}
+	
+	sound_cycles = 0;
 }
 
 void write_sound(Word address, Byte value) {
-	//unsigned int frequency = 0;
-	Byte b;
-	unsigned int frequency;
-	unsigned int r, s;
-	//if (address < 0xFF15)
-	//	printf("write: %hx: %hhx\n", address, value);
+	unsigned freq;
+	sound_update();
 	switch (address) {
-		case HWREG_NR10:	// channel 1 sweep
-			// FIXME should this be commented??
-			sound.channel_1.sweep.time = convert_time((float)((value & 70) >> 4) / 128.0f);
-			sound.channel_1.sweep.sign = (value & 0x08) ? -1.0f : 1.0f;
-			sound.channel_1.sweep.number = value & 0x07;
-			//printf("%hhu\n", value);
+		case HWREG_NR10:	/* channel 1 sweep */
+			sound.channel1.sweep.time = (value >> 4) & 0x07;
+			//sound.channel1.sweep.time_counter = sound.channel1.sweep.time;
+			sound.channel1.sweep.is_decreasing = (value >> 3) & 0x01;
+			sound.channel1.sweep.shift_number = value & 0x07;
 			break;
-		case HWREG_NR11: 	// channel 1 length / cycle duty
-			switch((value & 0xc0) >> 6) {
-				case 0x00:
-					sound.channel_1.duty = 0.125f;
-					break;
-				case 0x01:
-					sound.channel_1.duty = 0.25f;
-					break;
-				case 0x02:
-					sound.channel_1.duty = 0.5f;
-					break;
-				case 0x03:
-					sound.channel_1.duty = 0.75f;
-					break;
-			}
-			sound.channel_1.length = convert_time((float)(64 - (value & 0x3f)) / 256);
+		case HWREG_NR11: 	/* channel 1 length / cycle duty */
+			sound.channel1.length_counter = 64 - (value & 0x3f);
+			sound.channel1.duty.duty = value >> 6;
 			break;
-		case HWREG_NR12:	// channel 1 envelope
-			// envelope changes occur on next channel INIT
-			//if (!(value & 0xf0))
-			//	sound.channel_1.envelope.volume = 0;
-			//	sound.channel_1.envelope.sign = (value & 0x08) ? +1.0f : -1.0f;
-			sound.channel_1.envelope.number = value & 0x07;
-			//	sound.channel_1.envelope.time = convert_time((float)sound.channel_1.envelope.number / 64.0f);
+		case HWREG_NR12:	/* channel 1 envelope */
+			sound.channel1.envelope.length = value & 0x07;
+			sound.channel1.envelope.is_increasing = value & 0x08;
+			sound.channel1.envelope.volume = value >> 4;
+ 			break;
+		case HWREG_NR13:	/* channel 1 frequency lo */
+			freq = (sound.channel1.freq & 0x700) | value;
+			sound.channel1.freq = freq;
+			sound.channel1.period = 2048 - freq;
 			break;
-		case HWREG_NR13:	// frequency lo
-			sound.channel_1.gb_frequency = (unsigned int)value | ((unsigned int)(read_io(HWREG_NR14) & 0x07) << 8);
-			sound.channel_1.period = frequency_to_period(gb_freq_to_freq(sound.channel_1.gb_frequency));
-			//sound.channel_1.i = 0;	DEFINITELY NOT SUPPOSED TO BE HERE.
-			break;
-		case HWREG_NR14:	// frequency hi, init, counter selection
-			sound.channel_1.is_continuous = (value & 0x40) ? 0 : 1;
-			sound.channel_1.gb_frequency = (unsigned int)read_io(HWREG_NR13) | ((unsigned int)(value & 0x07) << 8);
-			sound.channel_1.period = frequency_to_period(gb_freq_to_freq(sound.channel_1.gb_frequency));
+		case HWREG_NR14:	/* frequency hi, init, counter selection */
+			freq = (sound.channel1.freq & 0xff) | ((value & 0x07) << 8);
+			sound.channel1.freq = freq;
+			sound.channel1.period = 2048 - freq;
+			sound.channel1.is_continuous = value & 0x40 ? 0 : 1;
+			/* trigger? */
 			if (value & 0x80) {
+/*
+				if ((sound.channel1.length_counter != 0) && (sound.channel1.is_on))
+					sound.channel1.envelope.is_zombie = 1;
+				else
+					sound.channel1.envelope.is_zombie = 0;
+*/				
+				sound.channel1.envelope.volume = read_io(HWREG_NR12) >> 4;
+				sound.channel1.is_on = 1;
+				sound.channel1.envelope.length_counter = sound.channel1.envelope.length;
+				/* sweep init */
+				sound.channel1.sweep.hidden_freq = sound.channel1.freq;
+				sound.channel1.sweep.time_counter = sound.channel1.sweep.time;
+				/* if length is not reloaded, maximum length is played */
+				if (sound.channel1.length_counter == 0)
+					sound.channel1.length_counter = 2047;
 				mark_channel_on(1);
-				sound.channel_1.is_on = 1;
-				//if (sound.channel_1.length == 0) {
-				//	sound.channel_1.length = convert_time(64);
-				//}
-				sound.channel_1.i = 0;				
-				b = read_io(HWREG_NR12);	// read envelope data
-				sound.channel_1.envelope.volume = (b & 0xf0) >> 4;
-				sound.channel_1.envelope.sign = (b & 0x08) ? +1.0f : -1.0f;
-				sound.channel_1.envelope.number = b & 0x07;
-				sound.channel_1.envelope.time = convert_time((float)sound.channel_1.envelope.number / 64.0f);
-				sound.channel_1.envelope.i = 0;
-				sound.channel_1.envelope.j = 0;
-				b = read_io(HWREG_NR10);
-				//sound.channel_1.sweep.time = convert_time((float)((b & 70) >> 4) / 128.0f);
-				//sound.channel_1.sweep.sign = (b & 0x08) ? -1.0f : 1.0f;
-				//sound.channel_1.sweep.number = b & 0x07;
-				sound.channel_1.sweep.i = 0;
-				sound.channel_1.sweep.j = 0;
-				sound.channel_1.sweep.shadow = sound.channel_1.gb_frequency;
-				//printf("init\n");
+				if (sound.channel1.sweep.time && sound.channel1.sweep.shift_number)
+					sweep_freq();
 			}
 			break;
-		case 0xFF15: 		// unused
+		case HWREG_NR21: 	/* channel 2 length / cycle duty */
+			sound.channel2.length_counter = 64 - (value & 0x3f);
+			sound.channel2.duty.duty = value >> 6;
 			break;
-		case HWREG_NR21: 	// channel 2 length / cycle duty
-			switch((value & 0xc0) >> 6) {
-				case 0x00:
-					sound.channel_2.duty = 0.125f;
-					break;
-				case 0x01:
-					sound.channel_2.duty = 0.25f;
-					break;
-				case 0x02:
-					sound.channel_2.duty = 0.5f;
-					break;
-				case 0x03:
-					sound.channel_2.duty = 0.75f;
-					break;
-			}
-			sound.channel_2.length = convert_time((float)(64 - (value & 0x3f)) / 256);
+		case HWREG_NR22:	/* channel 2 envelope */
+			sound.channel2.envelope.length = value & 0x07;
+			sound.channel2.envelope.is_increasing = value & 0x08;
+			sound.channel2.envelope.volume = value >> 4;
+ 			break;
+		case HWREG_NR23:	/* channel 2 frequency lo */
+			freq = (sound.channel2.freq & 0x700) | value;
+			sound.channel2.freq = freq;
+			sound.channel2.period = 2048 - freq;
 			break;
-		case HWREG_NR22:	// channel 2 envelope
-			// envelope changes occur on next channel INIT
-			//if (!(value & 0xf0))
-			//	sound.channel_2.envelope.volume = 0;
-			//sound.channel_2.envelope.sign = (value & 0x08) ? +1.0f : -1.0f;
-			//sound.channel_2.envelope.number = value & 0x07;
-			//sound.channel_2.envelope.time = convert_time((float)sound.channel_2.envelope.number / 64.0f);
-			break;
-		case HWREG_NR23:	// frequency lo
-			sound.channel_2.gb_frequency = (unsigned int)value | ((unsigned int)(read_io(HWREG_NR24) & 0x07) << 8);
-			sound.channel_2.period = frequency_to_period(gb_freq_to_freq(sound.channel_2.gb_frequency));
-			break;		
-		case HWREG_NR24:	// frequency hi, init, counter selection
-			sound.channel_2.is_continuous = (value & 0x40) ? 0 : 1;
-			sound.channel_2.gb_frequency = (unsigned int)read_io(HWREG_NR23) | ((unsigned int)(value & 0x07) << 8);
-			sound.channel_2.period = frequency_to_period(gb_freq_to_freq(sound.channel_2.gb_frequency));
+		case HWREG_NR24:	/* channel 2 frequency hi, init, counter selection */
+			freq = (sound.channel2.freq & 0xff) | ((value & 0x07) << 8);
+			sound.channel2.freq = freq;
+			sound.channel2.period = 2048 - freq;
+			sound.channel2.is_continuous = value & 0x40 ? 0 : 1;
+			/* trigger? */
 			if (value & 0x80) {
+				sound.channel2.envelope.volume = read_io(HWREG_NR22) >> 4;
+				sound.channel2.is_on = 1;
+				sound.channel2.envelope.length_counter = sound.channel2.envelope.length;
+				/* if length is not reloaded, maximum length is played */
+				if (sound.channel2.length_counter == 0)
+					sound.channel2.length_counter = 2047;
 				mark_channel_on(2);
-				sound.channel_2.is_on = 1;
-				sound.channel_2.i = 0;				
-				b = read_io(HWREG_NR22);	// read envelope data
-				sound.channel_2.envelope.volume = (b & 0xf0) >> 4;
-				sound.channel_2.envelope.sign = (b & 0x08) ? +1.0f : -1.0f;
-				sound.channel_2.envelope.number = b & 0x07;
-				sound.channel_2.envelope.time = convert_time((float)sound.channel_2.envelope.number / 64.0f);
-				sound.channel_2.envelope.i = 0;
-				sound.channel_2.envelope.j = 0;
 			}
 			break;
-		case HWREG_NR30:	// channel 3 sound on/off
-			sound.channel_3.is_on = (value & 0x80) ? 1 : 0;
+		case HWREG_NR30: 	/* channel 3 length / cycle duty */
+			sound.channel3.is_on = (value & 0x80) ? 1 : 0;
 			break;
-		case HWREG_NR31:	// channel 3 length
-			sound.channel_3.length = convert_time((float)(256 - value) / 256);
+		case HWREG_NR31: 	/* channel 3 length */
+			sound.channel3.length_counter = 256 - value;
 			break;
-		case HWREG_NR32:	// channel 3 volume
-			/* volume changes occur on next channel INIT */
+		case HWREG_NR32:	/* channel 3 level */
+			sound.channel3.volume = ((value >> 5) & 0x03) - 1;
+			if (sound.channel3.volume == -1)
+				sound.channel3.volume = 16;
+ 			break;
+		case HWREG_NR33:	/* channel 3 frequency lo */
+			freq = (sound.channel3.freq & 0x700) | value;
+			sound.channel3.freq = freq;
+			sound.channel3.period = (2048 - freq) << 1;
 			break;
-		case HWREG_NR33:	/* frequency lo */
-			frequency = (unsigned int)value | ((unsigned int)(read_io(HWREG_NR34) & 0x07) << 8);
-			sound.channel_3.period = frequency_to_period(65536 / (float)(2048 - frequency));
-			assert(sound.channel_3.period != 0);
-			break;
-		case HWREG_NR34:	/* frequency hi, init, counter selection */
-			sound.channel_3.is_continuous = (value & 0x40) ? 0 : 1;
-			frequency = (unsigned int)read_io(HWREG_NR33) | ((unsigned int)(value & 0x07) << 8);
-			sound.channel_3.period = frequency_to_period(65536 / (float)(2048 - frequency));
-			assert(sound.channel_3.period != 0);			
+		case HWREG_NR34:	/* channel 3 frequency hi, init, counter selection */
+			freq = (sound.channel3.freq & 0xff) | ((value & 0x07) << 8);
+			sound.channel3.freq = freq;
+			sound.channel3.period = (2048 - freq) << 1;
+			sound.channel3.is_continuous = value & 0x40 ? 0 : 1;
+			/* trigger? */
 			if (value & 0x80) {
-				//fprintf(stderr, "TRIGGER3\n");
+				sound.channel3.is_on = 1;
+				/* if length is not reloaded, maximum length is played */
+				if (sound.channel3.length_counter == 0)
+					sound.channel3.length_counter = 2047;
 				mark_channel_on(3);
-				sound.channel_3.is_on = 1;
-				sound.channel_3.i = 0;
-				//sound.channel_3.j = 0;
-				b = read_io(HWREG_NR32);	/* read volume data */
-				switch ((b & 0x60) >> 4) {
-					/* volume is expressed in number of right bitshifts! */
-					case 0x00: sound.channel_3.volume = -1; break; /* 0% 	*/
-					case 0x01: sound.channel_3.volume = 0; break; /* 100% 	*/
-					case 0x02: sound.channel_3.volume = 1; break; /* 50%	*/
-					case 0x03: sound.channel_3.volume = 2; break; /* 25%	*/
-				}
 			}
 			break;
-		case HWREG_NR41:	/* channel 4 sound length */
-			sound.channel_4.length = convert_time((float)(64 - (value & 0x3f)) / 256);
+
+		case HWREG_NR50:	/* L/R volume control */
+			sound.right_level = value & 0x07;
+			sound.left_level = value >> 4;
 			break;
-		case HWREG_NR42:	/* channel 4 envelope */
-			/* envelope changes occur on next channel INIT */
-				//if (!(value & 0xf0))
-				//	sound.channel_4.envelope.volume = 0;
-				//sound.channel_4.envelope.sign = (value & 0x08) ? +1.0f : -1.0f;
-				//sound.channel_4.envelope.number = value & 0x07;
-				//sound.channel_4.envelope.time = convert_time((float)sound.channel_4.envelope.number / 64.0f);
-			break;
-		case HWREG_NR43:	/* LFSR settings */
-			s = (value & 0xf0) >> 4;
-			r = value & 0x07;
-			if (r != 0)
-				frequency = (524288 / r) >> (s + 1);
-			else
-				frequency = (524288 * 2) >> (s + 1);
-			sound.channel_4.period = frequency_to_period(frequency);
-			sound.channel_4.counter = (value & 0x08) ? LFSR_7 : LFSR_15;
-			sound.channel_4.j %= (value & 0x08) ? LFSR_7_SIZE : LFSR_15_SIZE;
-			break;
-		case HWREG_NR44:	/* channel 4 init + counter selection */
-			sound.channel_4.is_continuous = (value & 0x40) ? 0 : 1;
-			if (value & 0x80) {
-				mark_channel_on(4);
-				sound.channel_4.is_on = 1;
-				//sound.channel_4.i = 0;
-				b = read_io(HWREG_NR42);	// read envelope data
-				sound.channel_4.envelope.volume = (b & 0xf0) >> 4;
-				sound.channel_4.envelope.sign = (b & 0x08) ? +1.0f : -1.0f;
-				sound.channel_4.envelope.number = b & 0x07;
-				sound.channel_4.envelope.time = convert_time((float)sound.channel_4.envelope.number / 64.0f);
-				sound.channel_4.envelope.i = 0;
-				sound.channel_4.envelope.j = 0;
-			}
-			break;
-		case HWREG_NR50:	/* channel control */
-			sound.volume_left = value & 0x07;
-			sound.volume_right = (value & 0x70) >> 4;
-			break;
-		case HWREG_NR52:	// turn off sound
-			//sound.is_on =  (value & 0x80) ? 1 : 0; /*FIXME*/
+		case HWREG_NR52:	/* sound on/off */
+			sound.is_on = (value & 0x80) ? 1 : 0;
 			break;
 		case HWREG_NR51:	/* output terminal selection */
-			sound.channel_4.is_on_right = (value & 0x80) ? 1 : 0;
-			sound.channel_3.is_on_right = (value & 0x40) ? 1 : 0;
-			sound.channel_2.is_on_right = (value & 0x20) ? 1 : 0;
-			sound.channel_1.is_on_right = (value & 0x10) ? 1 : 0;
-			sound.channel_4.is_on_left = (value & 0x08) ? 1 : 0;
-			sound.channel_3.is_on_left = (value & 0x04) ? 1 : 0;
-			sound.channel_2.is_on_left = (value & 0x02) ? 1 : 0;
-			sound.channel_1.is_on_left = (value & 0x01) ? 1 : 0;
+			//sound.channel_4.is_on_right = (value & 0x80) ? 1 : 0;
+			sound.channel3.is_on_right = (value & 0x40) ? 1 : 0;
+			sound.channel2.is_on_right = (value & 0x20) ? 1 : 0;
+			sound.channel1.is_on_right = (value & 0x10) ? 1 : 0;
+			//sound.channel_4.is_on_left = (value & 0x08) ? 1 : 0;
+			sound.channel3.is_on_left = (value & 0x04) ? 1 : 0;
+			sound.channel2.is_on_left = (value & 0x02) ? 1 : 0;
+			sound.channel1.is_on_left = (value & 0x01) ? 1 : 0;
 			break;
 		default:
 			break;
@@ -512,303 +446,312 @@ void write_sound(Word address, Byte value) {
 
 /*
  * updates the wave pattern cache when the gb's wave pattern memory is modified
+ * highest nibble is played first
  */
 void write_wave(Word address, Byte value) {
-	/* wave memory is set up so that high the nibble is played first */
-	sound.channel_3.samples[(address - 0xff30) * 2] = ((signed int)((value & 0xf0) >> 4) * 2) - 15;
-	sound.channel_3.samples[((address - 0xff30) * 2) + 1] = ((signed int)(value & 0x0f) * 2) - 15;
+	const short scale = ((HIGH * 2) / 15);
+	sound.channel3.wave_data[(address - 0xff30) * 2] = ((value >> 4) - 7) * scale;
+	sound.channel3.wave_data[(address - 0xff30) * 2 + 1] = ((value & 0x0f) - 7) * scale;
+	
+	printf("%x: %x -> %d %d\n", address, value, sound.channel3.wave_data[(address - 0xff30) * 2], sound.channel3.wave_data[(address - 0xff30) * 2 + 1]);
+
 }
 
-
-/* 
- * converts a frequency into a period (in samples NOT seconds!!!) 
- */
-static inline unsigned int frequency_to_period(float frequency) {
-	unsigned int period = (float)sample_rate / frequency;
-	/* avoid divide by 0s. */
-	if (period == 0) 
-		period = 1;
-	return period;
-} 
-
-/*
- * converts time in seconds to time in samples (which is what the callback uses)
- */
-static inline unsigned int convert_time(float time) {
-	return sample_rate * time;
-}
-
-/* converts a gameboy frequency into a real frequency (in 1/seconds) */
-static inline float gb_freq_to_freq(unsigned int gb_frequency) {
-	assert(gb_frequency < 2048);
-	return 131072 / (float)(2048 - gb_frequency);
-}
 
 /* updates NR52 with the channel status (ON) */
 static inline void mark_channel_on(unsigned int channel) {
-	write_io(HWREG_NR52, read_io(HWREG_NR52) | (0x01 << ((unsigned char)channel - 1)));
+	write_io(HWREG_NR52, read_io(HWREG_NR52) | (0x01 << (channel - 1)));
 }
 
 /* updates NR52 with the channel status (OFF) */
 static inline void mark_channel_off(unsigned int channel) {
-	write_io(HWREG_NR52, read_io(HWREG_NR52) & ~(0x01 << ((unsigned char)channel - 1)));
+	write_io(HWREG_NR52, read_io(HWREG_NR52) & ~(0x01 << (channel - 1)));
 }
 
-/*
- * portaudio sound callback. portaudio calls this whenever its sound buffer
- * needs refilling. to maintain portability, avoid weird function calls.
- * this function should be kept efficient, as the for loop must iterate
- * a number of times equal to the sample rate every second.
+
+/* The gameboy sound clock is 4.194304Mhz / 32 = 131072Hz
+ * this clock is the same even in double speed mode.
  */
-static int call_back(const void *input_buffer, void *output_buffer,
-                    unsigned long frames_per_buffer,
-                    const PaStreamCallbackTimeInfo* time_info,
-                    PaStreamCallbackFlags status_flags,
-                    void *user_data) {
-	SoundData *data = (SoundData*)user_data;
-	unsigned char *out = (unsigned char *)output_buffer;
-	char left[CHANNELS];
-	char right[CHANNELS];
-	unsigned long i, j;
-	signed int temp;
-	signed short so1, so2;
-	/* Prevent unused variable warnings. */
-	(void) time_info;
-	(void) status_flags;
-	(void) input_buffer;
 
-	for(i = 0; i < frames_per_buffer; i++) {
-		/* initialise samples to 0 */
-		 for (j = 0; j < CHANNELS; j++) {
-		 	left[j] = GROUND;
-		 	right[j] = GROUND;
-		 }
-		
-		// Channel 1 ===================================================
-		if (data->channel_1.is_on) {
-			// generate square wave
-			if (data->channel_1.i < (data->channel_1.period * data->channel_1.duty)) {
-				left[0] = 1 * data->channel_1.envelope.volume * data->channel_1.is_on_left;
-				right[0] = 1 * data->channel_1.envelope.volume * data->channel_1.is_on_right;
-			} else {
-				left[0] = -1 * data->channel_1.envelope.volume * data->channel_1.is_on_left;
-				right[0] = -1 * data->channel_1.envelope.volume * data->channel_1.is_on_right;
+unsigned total_time = 0;
+
+void sound_update() {
+	if (sound_cycles == 0)
+		return;
+
+	SDL_LockAudio();
+
+	/* channel 1 */
+	update_channel1(sound_cycles);
+	update_channel2(sound_cycles);
+	update_channel3(sound_cycles);
+
+	blip_end_frame(blip_left, sound_cycles);
+	blip_end_frame(blip_right, sound_cycles);
+
+	total_time += sound_cycles;
+	sound_cycles = 0;
+	SDL_UnlockAudio();
+}
+
+
+
+enum Side {
+	LEFT,
+	RIGHT
+};
+
+static void add_delta(enum Side side, unsigned t, short amp, short *last_delta);
+static inline bool inside_buffer(blip_t* b, unsigned t);
+
+static inline bool inside_buffer(blip_t* b, unsigned t) {
+	
+}
+
+static void add_delta(enum Side side, unsigned t, short amp, short *last_delta) {
+	blip_t* b;
+	if (side == LEFT) {
+		b = blip_left;
+		amp = (amp / 7) * sound.left_level;
+	} else {
+		b = blip_right;
+		amp = (amp / 7) * sound.right_level;
+	}
+	blip_add_delta(b, t, amp - *last_delta);
+	*last_delta = amp;
+}
+
+static int duty_wave_high[4] = {16, 16, 8, 24};
+static int duty_wave_low[4] = {20, 24, 24, 16};
+
+static inline void update_channel1(int clocks) {
+	unsigned i;
+	if (!sound.channel1.is_on)
+		return;
+	for (i = 0; i < clocks; i++) {
+		/* wave generation */
+		//fprintf(stderr, "%u ", sound.channel1.period_counter);
+ 		if (sound.channel1.period_counter == 0) {
+			if ((sound.channel1.period != 0) && (sound.channel1.period != 2048)) {
+				sound.channel1.period_counter = sound.channel1.period;
+				sound.channel1.duty.i = (sound.channel1.duty.i + 1) & 0x1f;
+				if (sound.channel1.duty.i == duty_wave_high[sound.channel1.duty.duty]) {
+					if (sound.channel1.is_on_left)
+						add_delta(LEFT, i, (HIGH / 15) * sound.channel1.envelope.volume, &sound.channel1.last_delta_left);
+					if (sound.channel1.is_on_right)
+						add_delta(RIGHT, i, (HIGH / 15) * sound.channel1.envelope.volume, &sound.channel1.last_delta_right);
+				}
+				else
+				if (sound.channel1.duty.i == duty_wave_low[sound.channel1.duty.duty]) {
+					if (sound.channel1.is_on_left)
+						add_delta(LEFT, i, (LOW / 15) * sound.channel1.envelope.volume, &sound.channel1.last_delta_left);
+					if (sound.channel1.is_on_right)
+						add_delta(RIGHT, i, (LOW / 15) * sound.channel1.envelope.volume, &sound.channel1.last_delta_right);
+				}
 			}
-			++data->channel_1.i;
-			// if the waveform has reached its period, restart it
-			if (data->channel_1.i >= data->channel_1.period)
-				data->channel_1.i = 0;
-			// if the sound is not continuous it, reduce its length
-			if (!data->channel_1.is_continuous) {
-				--data->channel_1.length;
-				// if the sound has completed its length, turn off the channel
-				if(data->channel_1.length == 0) {
-					data->channel_1.is_on = 0;
+		} else
+			--sound.channel1.period_counter;
+		/* length counter */
+		++sound.channel1.i;
+		if (sound.channel1.i == 16384) {
+			sound.channel1.i = 0;
+			if (!sound.channel1.is_continuous) {
+				--sound.channel1.length_counter;
+				if (sound.channel1.length_counter == 0) {
 					mark_channel_off(1);
+					sound.channel1.is_on = 0;
 				}
 			}
-			// is sweep enabled?
-			if ((data->channel_1.sweep.number != 0) && (data->channel_1.sweep.time != 0)) {
-				++data->channel_1.sweep.i;
-				// is it time to shift the frequency?
-				if ((data->channel_1.sweep.i == data->channel_1.sweep.time) /*&& 
-				   (data->channel_1.sweep.j != data->channel_1.sweep.number)*/) {
-					//data->channel_1.gb_frequency = data->channel_1.sweep.initial_frequency + ((data->channel_1.sweep.initial_frequency * data->channel_1.sweep.sign) / (1 << data->channel_1.sweep.number));
-					temp = data->channel_1.sweep.shadow + ((data->channel_1.sweep.shadow >> data->channel_1.sweep.number) * data->channel_1.sweep.sign);
-					// if the frequency has overflowed, disable channel
-					if ((temp >= 2048) || (temp < 0)) {
-						data->channel_1.is_on = 0;
-						mark_channel_off(1);
+		}
+		/* envelope */
+		++sound.channel1.envelope.i;
+		if (sound.channel1.envelope.i == 65536) {
+			sound.channel1.envelope.i = 0;
+			if (sound.channel1.envelope.length != 0) {
+				--sound.channel1.envelope.length_counter;
+				if (sound.channel1.envelope.length_counter == 0) {
+					sound.channel1.envelope.length_counter = sound.channel1.envelope.length;
+					if (sound.channel1.envelope.is_increasing) {
+						if (sound.channel1.envelope.volume != 15)
+							++sound.channel1.envelope.volume;
 					} else {
-						// convert from gameboy frequency to a real frequency and update the period
-						data->channel_1.sweep.shadow = data->channel_1.gb_frequency = temp;
-						data->channel_1.period = frequency_to_period(gb_freq_to_freq(data->channel_1.gb_frequency));
-						write_io(HWREG_NR13, (Byte)(data->channel_1.gb_frequency & 0xff));
-						write_io(HWREG_NR14, (read_io(HWREG_NR14) & 0xf8) | ((data->channel_1.gb_frequency & 700) >> 8));
-						// TODO writeback this value to registers
-						data->channel_1.sweep.i = 0;
-						++data->channel_1.sweep.j;
+						if (sound.channel1.envelope.volume != 0)
+							--sound.channel1.envelope.volume;
+						else
+							sound.channel1.envelope.is_zombie = 1;
 					}
 				}
 			}
-			if (data->channel_1.envelope.number != 0) {
-				++data->channel_1.envelope.i;
-				// is it time to shift the volume?
-				if ((data->channel_1.envelope.i == data->channel_1.envelope.time)) /* && 
-				   (data->channel_1.envelope.j != data->channel_1.envelope.number))*/ {
-					data->channel_1.envelope.volume += data->channel_1.envelope.sign;
-					//printf("volume: %hhd. number: %u<-%u\n", data->channel_1.envelope.volume, data->channel_1.envelope.number, data->channel_1.envelope.j);
-					if (data->channel_1.envelope.volume < 0) 
-						data->channel_1.envelope.volume = 0;
-					if (data->channel_1.envelope.volume > 15)
-						data->channel_1.envelope.volume = 15;
-					if (data->channel_1.envelope.volume == 0) {
-						//data->channel_1.is_on = 0;
-						//mark_channel_off(1); // FIXME should this be here??
+		}
+		/* sweep */
+		++sound.channel1.sweep.i;
+		if (sound.channel1.sweep.i == 32768) {
+			sound.channel1.sweep.i = 0;
+			if (sound.channel1.sweep.time != 0) {
+				if (sound.channel1.sweep.time_counter == 0) {
+					sound.channel1.sweep.time_counter = sound.channel1.sweep.time;
+					if (sound.channel1.sweep.time == 0) {
+						sound.channel1.is_on = 0;
+						//mark_channel_off(1); /* FIXME: put these in initial check */
+					} else {
+						sweep_freq();
 					}
-					data->channel_1.envelope.i = 0;
-					++data->channel_1.envelope.j;
-				}				
+				} else
+					--sound.channel1.sweep.time_counter;
 			}
 		}
+	}
+}
 
-		// Channel 2 ===================================================
-		if (data->channel_2.is_on) {
-			// generate square wave
-			if (data->channel_2.i < (data->channel_2.period * data->channel_2.duty)) {
-				left[1] = 1 * data->channel_2.envelope.volume * data->channel_2.is_on_left;
-				right[1] = 1 * data->channel_2.envelope.volume * data->channel_2.is_on_right;
-			} else {
-				left[1] = -1 * data->channel_2.envelope.volume * data->channel_2.is_on_left;
-				right[1] = -1 * data->channel_2.envelope.volume * data->channel_2.is_on_right;
+
+static inline void update_channel2(int clocks) {
+	unsigned i;
+	if (!sound.channel2.is_on)
+		return;
+	for (i = 0; i < clocks; i++) {
+		/* wave generation */
+		if (sound.channel2.period_counter == 0) {
+			if ((sound.channel2.period != 0) && (sound.channel2.period != 2048)) {
+				sound.channel2.period_counter = sound.channel2.period;
+				sound.channel2.duty.i = (sound.channel2.duty.i + 1) & 0x1f;
+				if (sound.channel2.duty.i == duty_wave_high[sound.channel2.duty.duty]) {
+					if (sound.channel2.is_on_left)
+						add_delta(LEFT, i, (HIGH / 15) * sound.channel2.envelope.volume, &sound.channel2.last_delta_left);
+					if (sound.channel2.is_on_right)
+						add_delta(RIGHT, i, (HIGH / 15) * sound.channel2.envelope.volume, &sound.channel2.last_delta_right);
+				}
+				else
+				if (sound.channel2.duty.i == duty_wave_low[sound.channel2.duty.duty]) {
+					if (sound.channel2.is_on_left)
+						add_delta(LEFT, i, (LOW / 15) * sound.channel2.envelope.volume, &sound.channel2.last_delta_left);
+					if (sound.channel2.is_on_right)
+						add_delta(RIGHT, i, (LOW / 15) * sound.channel2.envelope.volume, &sound.channel2.last_delta_right);
+				}
 			}
-			++data->channel_2.i;
-			// if the waveform has reached its period, restart it
-			if (data->channel_2.i >= data->channel_2.period)
-				data->channel_2.i = 0;
-			// if the sound is not continuous it, reduce its length
-			if (!data->channel_2.is_continuous) {
-				--data->channel_2.length;
-				// if the sound has completed its length, turn off the channel
-				if(data->channel_2.length == 0) {
-					data->channel_2.is_on = 0;
+		} else
+			--sound.channel2.period_counter;
+		/* length counter */
+		++sound.channel2.i;
+		if (sound.channel2.i == 16384) {
+			sound.channel2.i = 0;
+			if (!sound.channel2.is_continuous) {
+				--sound.channel2.length_counter;
+				if (sound.channel2.length_counter == 0) {
 					mark_channel_off(2);
+					sound.channel2.is_on = 0;
 				}
 			}
-			if (data->channel_2.envelope.number != 0) {
-				++data->channel_2.envelope.i;
-				// is it time to shift the volume?
-				if (data->channel_2.envelope.i == data->channel_2.envelope.time) {
-					data->channel_2.envelope.volume += data->channel_2.envelope.sign;
-					if (data->channel_2.envelope.volume < 0) 
-						data->channel_2.envelope.volume = 0;
-					if (data->channel_2.envelope.volume > 15)
-						data->channel_2.envelope.volume = 15;
-					if (data->channel_2.envelope.volume == 0) {
-						//data->channel_2.is_on = 0;
-						//mark_channel_off(2); // FIXME should this be here??
+		}
+		/* envelope */
+		++sound.channel2.envelope.i;
+		if (sound.channel2.envelope.i == 65536) {
+			sound.channel2.envelope.i = 0;
+			if (sound.channel2.envelope.length != 0) {
+				--sound.channel2.envelope.length_counter;
+				if (sound.channel2.envelope.length_counter == 0) {
+					sound.channel2.envelope.length_counter = sound.channel2.envelope.length;
+					if (sound.channel2.envelope.is_increasing) {
+						if (sound.channel2.envelope.volume != 15)
+							++sound.channel2.envelope.volume;
+					} else {
+						if (sound.channel2.envelope.volume != 0)
+							--sound.channel2.envelope.volume;
+						else
+							sound.channel2.envelope.is_zombie = 1;
 					}
-					data->channel_2.envelope.i = 0;
-					++data->channel_2.envelope.j;
-				}				
+				}
 			}
 		}
-		
-		// Channel 3 ===================================================
-		if (data->channel_3.is_on) {
-			// output arbitrary wave data
-			if (data->channel_3.volume != 255) {
-				if (data->channel_3.is_on_left)
-					left[2] = (data->channel_3.samples[(data->channel_3.i * 32) / data->channel_3.period]) >> data->channel_3.volume;
-				if (data->channel_3.is_on_right)		
-					right[2] = (data->channel_3.samples[(data->channel_3.i * 32) / data->channel_3.period]) >> data->channel_3.volume;
+	}
+}
+
+
+static inline void update_channel3(int clocks) {
+	unsigned i;
+	if (!sound.channel3.is_on)
+		return;
+	for (i = 0; i < clocks; i++) {
+		/* wave generation */
+		if (sound.channel3.period_counter == 0) {
+			if ((sound.channel3.period != 0) && (sound.channel3.period != 2048)) {
+				sound.channel3.period_counter = sound.channel3.period;
+				sound.channel3.wave_i = (sound.channel3.wave_i + 1) & 0x1f;
+				if (sound.channel3.is_on_left)
+					add_delta(LEFT, i, sound.channel3.wave_data[sound.channel3.wave_i] >> sound.channel3.volume, &sound.channel3.last_delta_left);
+				if (sound.channel3.is_on_right)
+					add_delta(RIGHT, i, sound.channel3.wave_data[sound.channel3.wave_i] >> sound.channel3.volume, &sound.channel3.last_delta_right);
 			}
-			++data->channel_3.i;
-			// if the waveform has reached its period, restart it
-			if (data->channel_3.i >= data->channel_3.period) {
-				data->channel_3.i = 0;
-			}
-			// if the sound is not continuous, reduce its length
-			if (!data->channel_3.is_continuous) {
-				--data->channel_3.length;
-				// if the sound has completed its length, turn off the channel
-				if(data->channel_3.length == 0) {
-					data->channel_3.is_on = 0;
+		} else
+			--sound.channel3.period_counter;
+		/* length counter */
+		++sound.channel3.i;
+		if (sound.channel3.i == 16384) {
+			sound.channel3.i = 0;
+			if (!sound.channel3.is_continuous) {
+				--sound.channel3.length_counter;
+				if (sound.channel3.length_counter == 0) {
 					mark_channel_off(3);
+					sound.channel3.is_on = 0;
 				}
 			}
 		}
+	}
+}
 
-		// Channel 4 ===================================================
-		if (data->channel_4.is_on) {
-			// output noise
-			if (data->channel_4.counter == LFSR_7) {
-				left[3] = lfsr_7[data->channel_4.j] * data->channel_4.envelope.volume * data->channel_4.is_on_left;
-				right[3] = lfsr_7[data->channel_4.j] * data->channel_4.envelope.volume * data->channel_4.is_on_right;
-			} else {
-				left[3] = lfsr_15[data->channel_4.j] * data->channel_4.envelope.volume * data->channel_4.is_on_left;
-				right[3] = lfsr_15[data->channel_4.j] * data->channel_4.envelope.volume * data->channel_4.is_on_right;
-			}
-			++data->channel_4.i;
-			// if the waveform has reached its period, restart it
-			if (data->channel_4.i >= data->channel_4.period) {
-				data->channel_4.i = 0;
-				++data->channel_4.j;
-				if (((data->channel_4.counter == LFSR_7) 
-					&& (data->channel_4.j >= LFSR_7_SIZE)) 
-						|| ((data->channel_4.counter == LFSR_15) 
-							&& (data->channel_4.j >= LFSR_15_SIZE)))
-					data->channel_4.j = 0;
-			}
-			// if the sound is not continuous, reduce its length
-			//printf("%u. %hhu\n", data->channel_4.length, data->channel_4.is_continuous);
-			if (!data->channel_4.is_continuous) {
-				--data->channel_4.length;
-				// if the sound has completed its length, turn off the channel
-				if(data->channel_4.length == 0) { // TODO unset bit in FF26
-					data->channel_4.is_on = 0;
-					mark_channel_off(4);
-				}
-			}
-			if (data->channel_4.envelope.number != 0) {
-				++data->channel_4.envelope.i;
-				// is it time to shift the volume?
-				if (data->channel_4.envelope.i == data->channel_4.envelope.time) {
-					data->channel_4.envelope.volume += data->channel_4.envelope.sign;
-					if (data->channel_4.envelope.volume < 0)
-						data->channel_4.envelope.volume = 0;
-					if (data->channel_4.envelope.volume > 15)
-						data->channel_4.envelope.volume = 15;
-					if (data->channel_2.envelope.volume == 0) {
-						//data->channel_4.is_on = 0;
-						//mark_channel_off(4); // FIXME should this be here??
-					}
-					data->channel_4.envelope.i = 0;
-					++data->channel_4.envelope.j;
-				}
-			}
+
+static void sweep_freq() {
+	sound.channel1.freq = sound.channel1.sweep.hidden_freq;
+	if (sound.channel1.freq == 0)
+		sound.channel1.period = 0;
+	else
+		sound.channel1.period = 2048 - sound.channel1.freq;
+	
+	if (!sound.channel1.sweep.is_decreasing) {
+		sound.channel1.sweep.hidden_freq += (sound.channel1.sweep.hidden_freq >> sound.channel1.sweep.shift_number);
+		if (sound.channel1.sweep.hidden_freq > 2047) {
+			sound.channel1.is_on = 0;
+			sound.channel1.sweep.hidden_freq = 2048;
 		}
-
-		/*
-		 * mix the channels and expand to larger type temporarily, so that 
-		 * volume can be reduced with as little rounding down data loss 
-		 * as possible.
-		 */
-		so1 = ((left[0] + left[1] + left[2] + left[3]) * data->volume_left) / 7;
-		so2 = ((right[0] + right[1] + right[2] + right[3]) * data->volume_right) / 7;
-		// output the mixed samples
-		//printf("%+hhi\n", left[1]);
-		*out++ = (signed char)so1;
-		*out++ = (signed char)so2;
-    }
-    
-    return paContinue;
+	} else {
+		sound.channel1.sweep.hidden_freq -= (sound.channel1.sweep.hidden_freq >> sound.channel1.sweep.shift_number);
+		if (sound.channel1.sweep.hidden_freq > 2047) {
+			sound.channel1.sweep.hidden_freq = 0; /* ? */
+			sound.channel1.is_on = 0;
+		}
+	}
 }
 
 void sound_save(void) {
-	save_uint("channel_1.length", sound.channel_1.length);
-	save_uint("channel_1.period", sound.channel_1.period);
-	save_int("channel_1.gb_frequency", sound.channel_1.gb_frequency);
-	save_uint("channel_1.i", sound.channel_1.i);
-	
-	save_uint("channel_1.length", sound.channel_1.length);
-	save_uint("channel_1.sweep.number", sound.channel_1.sweep.number);
-	save_uint("channel_1.sweep.time", sound.channel_1.sweep.time);
-	save_int("channel_1.sweep.shadow", sound.channel_1.sweep.shadow);
-	save_uint("channel_1.sweep.i", sound.channel_1.sweep.i);
-	save_uint("channel_1.sweep.j", sound.channel_1.sweep.j);
 	
 	
 }
 
 void sound_load(void) {
-	save_uint("channel_1.sweep.number", sound.channel_1.sweep.number);
-	save_uint("channel_1.sweep.time", sound.channel_1.sweep.time);
-	save_int("channel_1.sweep.shadow", sound.channel_1.sweep.shadow);
-	save_uint("channel_1.sweep.i", sound.channel_1.sweep.i);
-	save_uint("channel_1.sweep.j", sound.channel_1.sweep.j);
-
 	
 }
 
 
+static void callback(void* data, Uint8 *stream, int len) {
+	Sint16 *buffer = (Sint16 *)stream;
+		
+	blip_read_samples(blip_left, buffer, len / 4, 1);
+	blip_read_samples(blip_right, buffer + 1, len / 4, 1);
+	
+	/*
+	long period = sample_rate / freq;
+	for (i = 0; i < (len / 2); i += 2) {
+		if (wave_index < (period / 2)) {
+			buffer[i] = 10000;
+			buffer[i + 1] = 10000;
+		}
+		else {
+			buffer[i] = -10000;
+			buffer[i + 1] = -10000;
+		}
+			
+		++wave_index;
+		if (wave_index == period)
+			wave_index = 0;
+	}
+	*/
+}
