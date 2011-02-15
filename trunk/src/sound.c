@@ -307,7 +307,7 @@ void write_sound(Word address, Byte value) {
 			freq = (sound.channel1.freq & 0xff) | ((value & 0x07) << 8);
 			sound.channel1.freq = freq;
 			sound.channel1.period = 2048 - freq;
-			sound.channel1.is_continuous = value & 0x40 ? 0 : 1;
+			sound.channel1.length.is_continuous = value & 0x40 ? 0 : 1;
 			/* trigger? */
 			if (value & 0x80) {
 /*
@@ -348,7 +348,7 @@ void write_sound(Word address, Byte value) {
 			freq = (sound.channel2.freq & 0xff) | ((value & 0x07) << 8);
 			sound.channel2.freq = freq;
 			sound.channel2.period = 2048 - freq;
-			sound.channel2.is_continuous = value & 0x40 ? 0 : 1;
+			sound.channel2.length.is_continuous = value & 0x40 ? 0 : 1;
 			/* trigger? */
 			if (value & 0x80) {
 				sound.channel2.envelope.volume = read_io(HWREG_NR22) >> 4;
@@ -380,7 +380,7 @@ void write_sound(Word address, Byte value) {
 			freq = (sound.channel3.freq & 0xff) | ((value & 0x07) << 8);
 			sound.channel3.freq = freq;
 			sound.channel3.period = (2048 - freq) << 1;
-			sound.channel3.is_continuous = value & 0x40 ? 0 : 1;
+			sound.channel3.length.is_continuous = value & 0x40 ? 0 : 1;
 			/* trigger? */
 			if (value & 0x80) {
 				sound.channel3.is_on = 1;
@@ -536,7 +536,7 @@ static inline void update_channel1(int clocks) {
 		++sound.channel1.length.i;
 		if (sound.channel1.length.i == 16384) {
 			sound.channel1.length.i = 0;
-			if (!sound.channel1.is_continuous) {
+			if (!sound.channel1.length.is_continuous) {
 				--sound.channel1.length.length;
 				if (sound.channel1.length.length == 0) {
 					mark_channel_off(1);
@@ -599,7 +599,7 @@ static inline void update_channel2(int clocks) {
 		++sound.channel2.length.i;
 		if (sound.channel2.length.i == 16384) {
 			sound.channel2.length.i = 0;
-			if (!sound.channel2.is_continuous) {
+			if (!sound.channel2.length.is_continuous) {
 				--sound.channel2.length.length;
 				if (sound.channel2.length.length == 0) {
 					mark_channel_off(2);
@@ -652,7 +652,7 @@ static inline void update_channel3(int clocks) {
 		++sound.channel3.length.i;
 		if (sound.channel3.length.i == 16384) {
 			sound.channel3.length.i = 0;
-			if (!sound.channel3.is_continuous) {
+			if (!sound.channel3.length.is_continuous) {
 				--sound.channel3.length.length;
 				if (sound.channel3.length.length == 0) {
 					mark_channel_off(3);
