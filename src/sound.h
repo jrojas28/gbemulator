@@ -36,7 +36,18 @@ void sound_update();
 typedef struct {
 	unsigned duty;
 	unsigned i;
-} DutyGenerator;
+} Duty;
+
+typedef struct {
+	unsigned i;
+	short* samples;
+} Wave;
+
+typedef struct {
+	unsigned i;
+	unsigned length;
+	bool is_continuous;
+} Length;
 
 typedef struct {
 	unsigned volume;
@@ -58,28 +69,27 @@ typedef struct {
 
 
 typedef struct {
-	DutyGenerator duty;
+	Duty duty;
 	Envelope envelope;
 	Sweep sweep;
-	unsigned length_counter;
-	unsigned i;
+	Length length;
+
 	unsigned freq;
 	unsigned period;
 	unsigned period_counter;
 	short last_delta_right;
 	short last_delta_left;
-	bool is_continuous;
 	bool is_on;
 	
 	bool is_on_left;
 	bool is_on_right;
-} Channel1;
+} SquareChannel;
 
+/*
 typedef struct {
-	DutyGenerator duty;
+	Duty duty;
 	Envelope envelope;
-	unsigned length_counter;
-	unsigned i;
+	Length length;
 	unsigned freq;
 	unsigned period;
 	unsigned period_counter;
@@ -91,32 +101,30 @@ typedef struct {
 	bool is_on_left;
 	bool is_on_right;
 } Channel2;
+*/
 
 typedef struct {
-	short* wave_data;
-	unsigned wave_i;
+	Wave wave;
+	Length length;
 	unsigned volume;
-	unsigned length_counter;
-	unsigned i;
 	unsigned freq;
 	unsigned period;
 	unsigned period_counter;
 	short last_delta_right;
 	short last_delta_left;
-	bool is_continuous;
 	bool is_on;
 	
 	bool is_on_left;
 	bool is_on_right;
-} Channel3;
+} SampleChannel;
 
 typedef struct {
 	bool is_on;
 	unsigned right_level;
 	unsigned left_level;
-	Channel1 channel1;
-	Channel2 channel2;
-	Channel3 channel3;
+	SquareChannel channel1;
+	SquareChannel channel2;
+	SampleChannel channel3;
 } SoundData;
 
 void sound_init(void);

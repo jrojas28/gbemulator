@@ -113,8 +113,8 @@ void sound_init(void) {
 			lfsr_15[i] = LOW;
 	}
 	
-	sound.channel3.wave_data = malloc(32 * sizeof(short));
-	
+	sound.channel3.wave.samples = malloc(32 * sizeof(short));
+
 	desired.freq = sample_rate;
 	desired.format = AUDIO_S16SYS;
 	desired.channels = 2;
@@ -245,49 +245,18 @@ void sound_reset(void) {
 	else
 		write_io(HWREG_NR52, 0xf1);
 	
-	sound.channel1.is_on = 0;
-	sound.channel1.duty.i = 0;
-	sound.channel1.duty.duty = 0;
-	sound.channel1.is_continuous = 0;
-	sound.channel1.is_on_left = 1;
-	sound.channel1.is_on_right = 1;
-	sound.channel1.length_counter = 0;
-	sound.channel1.i = 0;
-	sound.channel1.freq = 0;
-	sound.channel1.period = 0;
-	sound.channel1.period_counter = 0;
-	sound.channel1.envelope.i = 0;
-	sound.channel1.envelope.is_increasing = 0;
-	sound.channel1.envelope.is_zombie = 0;
-	sound.channel1.envelope.length = 0;
-	sound.channel1.envelope.length_counter = 0;
-	sound.channel1.envelope.volume = 15;
+	memset(&sound.channel1, 0, sizeof(sound.channel1));
+	memset(&sound.channel2, 0, sizeof(sound.channel2));
+	//memset(&sound.channel3, 0, sizeof(sound.channel3));
+
 	sound.channel1.last_delta_right = 0;
 	sound.channel1.last_delta_left = 0;
 	
-	sound.channel2.is_on = 0; 	/* set by boot rom? */
-	sound.channel2.duty.i = 0;
-	sound.channel2.duty.duty = 0;
-	sound.channel2.is_continuous = 0;
-	sound.channel2.is_on_left = 1;
-	sound.channel2.is_on_right = 1;
-	sound.channel2.length_counter = 0;
-	sound.channel2.i = 0;
-	sound.channel2.freq = 0;
-	sound.channel2.period = 0;
-	sound.channel2.period_counter = 0;
-	sound.channel2.envelope.i = 0;
-	sound.channel2.envelope.is_increasing = 0;
-	sound.channel2.envelope.is_zombie = 0;
-	sound.channel2.envelope.length = 0;
-	sound.channel2.envelope.length_counter = 0;
-	sound.channel2.envelope.volume = 15;
 	sound.channel2.last_delta_right = 0;
 	sound.channel2.last_delta_left = 0;
 
 	//sound.channel1.envelope.
 	
-
 /*
 	sound.channel_1.is_on = 0;
 	sound.channel_2.is_on = 0;
@@ -321,7 +290,7 @@ void write_sound(Word address, Byte value) {
 			sound.channel1.sweep.shift_number = value & 0x07;
 			break;
 		case HWREG_NR11: 	/* channel 1 length / cycle duty */
-			sound.channel1.length_counter = 64 - (value & 0x3f);
+			sound.channel1.length.length = 64 - (value & 0x3f);
 			sound.channel1.duty.duty = value >> 6;
 			break;
 		case HWREG_NR12:	/* channel 1 envelope */
@@ -354,15 +323,15 @@ void write_sound(Word address, Byte value) {
 				sound.channel1.sweep.hidden_freq = sound.channel1.freq;
 				sound.channel1.sweep.time_counter = sound.channel1.sweep.time;
 				/* if length is not reloaded, maximum length is played */
-				if (sound.channel1.length_counter == 0)
-					sound.channel1.length_counter = 2047;
+				if (sound.channel1.length.length == 0)
+					sound.channel1.length.length = 2047;
 				mark_channel_on(1);
 				if (sound.channel1.sweep.time && sound.channel1.sweep.shift_number)
 					sweep_freq();
 			}
 			break;
 		case HWREG_NR21: 	/* channel 2 length / cycle duty */
-			sound.channel2.length_counter = 64 - (value & 0x3f);
+			sound.channel2.length.length = 64 - (value & 0x3f);
 			sound.channel2.duty.duty = value >> 6;
 			break;
 		case HWREG_NR22:	/* channel 2 envelope */
@@ -386,8 +355,8 @@ void write_sound(Word address, Byte value) {
 				sound.channel2.is_on = 1;
 				sound.channel2.envelope.length_counter = sound.channel2.envelope.length;
 				/* if length is not reloaded, maximum length is played */
-				if (sound.channel2.length_counter == 0)
-					sound.channel2.length_counter = 2047;
+				if (sound.channel2.length.length == 0)
+					sound.channel2.length.length = 2047;
 				mark_channel_on(2);
 			}
 			break;
@@ -395,7 +364,7 @@ void write_sound(Word address, Byte value) {
 			sound.channel3.is_on = (value & 0x80) ? 1 : 0;
 			break;
 		case HWREG_NR31: 	/* channel 3 length */
-			sound.channel3.length_counter = 256 - value;
+			sound.channel3.length.length = 256 - value; /* FIXME should be more */
 			break;
 		case HWREG_NR32:	/* channel 3 level */
 			sound.channel3.volume = ((value >> 5) & 0x03) - 1;
@@ -416,8 +385,8 @@ void write_sound(Word address, Byte value) {
 			if (value & 0x80) {
 				sound.channel3.is_on = 1;
 				/* if length is not reloaded, maximum length is played */
-				if (sound.channel3.length_counter == 0)
-					sound.channel3.length_counter = 2047;
+				if (sound.channel3.length.length == 0)
+					sound.channel3.length.length = 2047;
 				mark_channel_on(3);
 			}
 			break;
@@ -450,11 +419,8 @@ void write_sound(Word address, Byte value) {
  */
 void write_wave(Word address, Byte value) {
 	const short scale = ((HIGH * 2) / 15);
-	sound.channel3.wave_data[(address - 0xff30) * 2] = ((value >> 4) - 7) * scale;
-	sound.channel3.wave_data[(address - 0xff30) * 2 + 1] = ((value & 0x0f) - 7) * scale;
-	
-	printf("%x: %x -> %d %d\n", address, value, sound.channel3.wave_data[(address - 0xff30) * 2], sound.channel3.wave_data[(address - 0xff30) * 2 + 1]);
-
+	sound.channel3.wave.samples[(address - 0xff30) * 2] = ((value >> 4) - 7) * scale;
+	sound.channel3.wave.samples[(address - 0xff30) * 2 + 1] = ((value & 0x0f) - 7) * scale;
 }
 
 
@@ -521,8 +487,39 @@ static void add_delta(enum Side side, unsigned t, short amp, short *last_delta) 
 	*last_delta = amp;
 }
 
-static int duty_wave_high[4] = {16, 16, 8, 24};
-static int duty_wave_low[4] = {20, 24, 24, 16};
+static void clock_square(SquareChannel *sq, int t) {
+	const int duty_wave_high[4] = {16, 16, 8, 24};
+	const int duty_wave_low[4] = {20, 24, 24, 16};
+
+	if ((sq->period != 0) && (sq->period != 2048)) {
+		sq->period_counter = sq->period;
+		sq->duty.i = (sq->duty.i + 1) & 0x1f;
+		if (sq->duty.i == duty_wave_high[sq->duty.duty]) {
+			if (sq->is_on_left)
+				add_delta(LEFT, t, (HIGH / 15) * sq->envelope.volume, &sq->last_delta_left);
+			if (sound.channel1.is_on_right)
+				add_delta(RIGHT, t, (HIGH / 15) * sq->envelope.volume, &sq->last_delta_right);
+		}
+		else
+		if (sq->duty.i == duty_wave_low[sq->duty.duty]) {
+			if (sq->is_on_left)
+				add_delta(LEFT, t, (LOW / 15) * sq->envelope.volume, &sq->last_delta_left);
+			if (sq->is_on_right)
+				add_delta(RIGHT, t, (LOW / 15) * sq->envelope.volume, &sq->last_delta_right);
+		}
+	}	
+}
+/*
+static void clock_length(Length *l, unsigned ch) {
+	if (!sound.channel1.is_continuous) {
+		--sound.channel1.length.length;
+		if (sound.channel1.length.length == 0) {
+			mark_channel_off(1);
+			sound.channel1.is_on = 0;
+		}
+	}
+}
+*/
 
 static inline void update_channel1(int clocks) {
 	unsigned i;
@@ -532,32 +529,16 @@ static inline void update_channel1(int clocks) {
 		/* wave generation */
 		//fprintf(stderr, "%u ", sound.channel1.period_counter);
  		if (sound.channel1.period_counter == 0) {
-			if ((sound.channel1.period != 0) && (sound.channel1.period != 2048)) {
-				sound.channel1.period_counter = sound.channel1.period;
-				sound.channel1.duty.i = (sound.channel1.duty.i + 1) & 0x1f;
-				if (sound.channel1.duty.i == duty_wave_high[sound.channel1.duty.duty]) {
-					if (sound.channel1.is_on_left)
-						add_delta(LEFT, i, (HIGH / 15) * sound.channel1.envelope.volume, &sound.channel1.last_delta_left);
-					if (sound.channel1.is_on_right)
-						add_delta(RIGHT, i, (HIGH / 15) * sound.channel1.envelope.volume, &sound.channel1.last_delta_right);
-				}
-				else
-				if (sound.channel1.duty.i == duty_wave_low[sound.channel1.duty.duty]) {
-					if (sound.channel1.is_on_left)
-						add_delta(LEFT, i, (LOW / 15) * sound.channel1.envelope.volume, &sound.channel1.last_delta_left);
-					if (sound.channel1.is_on_right)
-						add_delta(RIGHT, i, (LOW / 15) * sound.channel1.envelope.volume, &sound.channel1.last_delta_right);
-				}
-			}
+			clock_square(&sound.channel1, i);
 		} else
 			--sound.channel1.period_counter;
 		/* length counter */
-		++sound.channel1.i;
-		if (sound.channel1.i == 16384) {
-			sound.channel1.i = 0;
+		++sound.channel1.length.i;
+		if (sound.channel1.length.i == 16384) {
+			sound.channel1.length.i = 0;
 			if (!sound.channel1.is_continuous) {
-				--sound.channel1.length_counter;
-				if (sound.channel1.length_counter == 0) {
+				--sound.channel1.length.length;
+				if (sound.channel1.length.length == 0) {
 					mark_channel_off(1);
 					sound.channel1.is_on = 0;
 				}
@@ -611,32 +592,16 @@ static inline void update_channel2(int clocks) {
 	for (i = 0; i < clocks; i++) {
 		/* wave generation */
 		if (sound.channel2.period_counter == 0) {
-			if ((sound.channel2.period != 0) && (sound.channel2.period != 2048)) {
-				sound.channel2.period_counter = sound.channel2.period;
-				sound.channel2.duty.i = (sound.channel2.duty.i + 1) & 0x1f;
-				if (sound.channel2.duty.i == duty_wave_high[sound.channel2.duty.duty]) {
-					if (sound.channel2.is_on_left)
-						add_delta(LEFT, i, (HIGH / 15) * sound.channel2.envelope.volume, &sound.channel2.last_delta_left);
-					if (sound.channel2.is_on_right)
-						add_delta(RIGHT, i, (HIGH / 15) * sound.channel2.envelope.volume, &sound.channel2.last_delta_right);
-				}
-				else
-				if (sound.channel2.duty.i == duty_wave_low[sound.channel2.duty.duty]) {
-					if (sound.channel2.is_on_left)
-						add_delta(LEFT, i, (LOW / 15) * sound.channel2.envelope.volume, &sound.channel2.last_delta_left);
-					if (sound.channel2.is_on_right)
-						add_delta(RIGHT, i, (LOW / 15) * sound.channel2.envelope.volume, &sound.channel2.last_delta_right);
-				}
-			}
+			clock_square(&sound.channel2, i);
 		} else
 			--sound.channel2.period_counter;
 		/* length counter */
-		++sound.channel2.i;
-		if (sound.channel2.i == 16384) {
-			sound.channel2.i = 0;
+		++sound.channel2.length.i;
+		if (sound.channel2.length.i == 16384) {
+			sound.channel2.length.i = 0;
 			if (!sound.channel2.is_continuous) {
-				--sound.channel2.length_counter;
-				if (sound.channel2.length_counter == 0) {
+				--sound.channel2.length.length;
+				if (sound.channel2.length.length == 0) {
 					mark_channel_off(2);
 					sound.channel2.is_on = 0;
 				}
@@ -675,21 +640,21 @@ static inline void update_channel3(int clocks) {
 		if (sound.channel3.period_counter == 0) {
 			if ((sound.channel3.period != 0) && (sound.channel3.period != 2048)) {
 				sound.channel3.period_counter = sound.channel3.period;
-				sound.channel3.wave_i = (sound.channel3.wave_i + 1) & 0x1f;
+				sound.channel3.wave.i = (sound.channel3.wave.i + 1) & 0x1f;
 				if (sound.channel3.is_on_left)
-					add_delta(LEFT, i, sound.channel3.wave_data[sound.channel3.wave_i] >> sound.channel3.volume, &sound.channel3.last_delta_left);
+					add_delta(LEFT, i, sound.channel3.wave.samples[sound.channel3.wave.i] >> sound.channel3.volume, &sound.channel3.last_delta_left);
 				if (sound.channel3.is_on_right)
-					add_delta(RIGHT, i, sound.channel3.wave_data[sound.channel3.wave_i] >> sound.channel3.volume, &sound.channel3.last_delta_right);
+					add_delta(RIGHT, i, sound.channel3.wave.samples[sound.channel3.wave.i] >> sound.channel3.volume, &sound.channel3.last_delta_right);
 			}
 		} else
 			--sound.channel3.period_counter;
 		/* length counter */
-		++sound.channel3.i;
-		if (sound.channel3.i == 16384) {
-			sound.channel3.i = 0;
+		++sound.channel3.length.i;
+		if (sound.channel3.length.i == 16384) {
+			sound.channel3.length.i = 0;
 			if (!sound.channel3.is_continuous) {
-				--sound.channel3.length_counter;
-				if (sound.channel3.length_counter == 0) {
+				--sound.channel3.length.length;
+				if (sound.channel3.length.length == 0) {
 					mark_channel_off(3);
 					sound.channel3.is_on = 0;
 				}
