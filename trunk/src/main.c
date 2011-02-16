@@ -50,7 +50,7 @@
 #include "debug.h"
 #include "save.h"
 
-#define TIMING_GRANULARITY	100
+#define TIMING_GRANULARITY	1000
 #define TIMING_INTERVAL		(1000000000 / TIMING_GRANULARITY)
 #define MAX_CPU_CYCLES		200
 

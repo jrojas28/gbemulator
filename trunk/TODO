@@ -1,11 +1,7 @@
 TODO
 	Bugs
 		Fix H/GDMA?
-		Fix sound bugs ****************************************************************************************************
-			mostly affects channel 1, some sounds are wrong
-			do high notes sound out of pitch? YES: interpolation needed
-			fix the never ending noise bug (when daisy turns into bug)
-		Fix the strange sound stop + crash bug: obtain core dump when this next occurs
+		Fix sound bugs DONE
 		Fix time allocated to CPU and timer
 		Fix DAA instruction
 		Fix HALT instruction
@@ -14,11 +10,12 @@ TODO
 		Initialise sound/graphics data properly!
 		Find out why some of the demos dont work properly
 		Fix weird slow downs
+		Fix slight graphical inaccuracies: sprites not lining up exactly with background?
 	Rewrites
 		the SDL_Delay() calling code is bad: needs to work on a FPS basis?
-		most of the sound code is pretty badly designed tbh
+		consider making the tile cache not use SDL surfaces/blitting
 	Implementation
-		serial hack
+		serial hack (IS THIS DONE?)
 		MBC3 real time clock
 		Implement display off feature: the absense of this causes lots of problems: DONE (I HOPE)
 		Sprite ordering
@@ -30,7 +27,7 @@ TODO
 		Gameboy Color support IN PROGRESS
 		UI
 		Joystick support
-		internal GB and GBC rom support
+		internal GB and GBC boot rom support
 		settings/config file
 	Nice extras
 		video/sound file output
