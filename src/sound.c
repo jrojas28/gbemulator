@@ -36,9 +36,32 @@
 #include "save.h"
 #include "blip_buf.h"
 
-static short *lfsr_7;
-static short *lfsr_15;
-double sample_rate = 44100;
+#define MAX_SAMPLE			32767
+#define MIN_SAMPLE			-32767
+
+#define HIGH				(MAX_SAMPLE / 4)
+#define LOW					(MIN_SAMPLE / 4)
+#define	GRND				0
+#define LFSR_7_SIZE			127
+#define LFSR_15_SIZE		32767
+#define LFSR_15				0
+#define LFSR_7				1
+
+
+enum Side {
+	LEFT,
+	RIGHT
+};
+
+enum Counter {
+	PERIOD, LENGTH, ENVELOPE, SWEEP
+};
+
+static short *lfsr[2];
+static unsigned lfsr_size[2];
+static short* wave_samples;
+
+static double sample_rate = 44100;
 static blip_t* blip_left;
 static blip_t* blip_right;
 
@@ -51,7 +74,19 @@ static void callback(void* data, Uint8 *stream, int len);
 static inline void update_channel1(int clocks);
 static inline void update_channel2(int clocks);
 static inline void update_channel3(int clocks);
+static inline void update_channel4(int clocks);
+
+static void clock_square(SquareChannel *sq, int t);
+static void clock_sample(SampleChannel *sc, int t);
+static void clock_sweep(SquareChannel *sq);
+static void clock_lfsr(NoiseChannel *ns, int t);
+static void clock_length(Length *l, unsigned ch);
+static void clock_envelope(Envelope *e);
+static void clock_sweep(SquareChannel *sq);
+static int get_soonest_clock(unsigned a, unsigned b, unsigned c, unsigned d, unsigned *clocks);
 static void sweep_freq();
+
+static void add_delta(int side, unsigned t, short amp, short *last_delta);
 
 static const unsigned char dmg_wave[] = {
 	0xac, 0xdd, 0xda, 0x48, 0x36, 0x02, 0xcf, 0x16, 
@@ -65,19 +100,7 @@ static const unsigned char gbc_wave[] = {
 
 bool sound_enabled;
 
-#define MAX_SAMPLE			32767
-#define MIN_SAMPLE			-32767
-
-#define HIGH				(MAX_SAMPLE / 4)
-#define LOW					(MIN_SAMPLE / 4)
-#define	GRND				0
-#define LFSR_7_SIZE			127
-#define LFSR_15_SIZE		32767
-#define LFSR_7				0
-#define LFSR_15				1
-
 int sound_cycles;
-
 
 extern int console;
 extern int console_mode;
@@ -88,32 +111,35 @@ void sound_init(void) {
 	int i;
 	SDL_AudioSpec desired;
 	
-	lfsr_7 = malloc(LFSR_7_SIZE * sizeof(short));
-	lfsr_15 = malloc(LFSR_15_SIZE * sizeof(short));
+	lfsr_size[LFSR_7] = LFSR_7_SIZE;
+	lfsr_size[LFSR_15] = LFSR_15_SIZE;
+
+	lfsr[LFSR_7] = malloc(lfsr_size[LFSR_7] * sizeof(short));
+	lfsr[LFSR_15] = malloc(lfsr_size[LFSR_15] * sizeof(short));
 
 	/* initialise 7 bit LFSR values */
 	r7 = 0xff;
-	for (i = 0; i < LFSR_7_SIZE; i++) {
+	for (i = 0; i < lfsr_size[LFSR_7]; i++) {
 		r7 >>= 1;
 		r7 |= (((r7 & 0x02) >> 1) ^ (r7 & 0x01)) << 7;
 		if (r7 & 0x01)
-			lfsr_7[i] = HIGH;
+			lfsr[LFSR_7][i] = HIGH / 15;
 		else
-			lfsr_7[i] = LOW;
+			lfsr[LFSR_7][i] = LOW / 15;
 	}
 
 	/* initialise 15 bit LFSR values */
 	r15 = 0xffff;
-	for (i = 0; i < LFSR_15_SIZE; i++) {
+	for (i = 0; i < lfsr_size[LFSR_15]; i++) {
 		r15 >>= 1;
 		r15 |= (((r15 & 0x0002) >> 1) ^ (r15 & 0x0001)) << 15;
 		if (r15 & 0x0001)
-			lfsr_15[i] = HIGH;
+			lfsr[LFSR_15][i] = HIGH / 15;
 		else
-			lfsr_15[i] = LOW;
+			lfsr[LFSR_15][i] = LOW / 15;
 	}
 	
-	sound.channel3.wave.samples = malloc(32 * sizeof(short));
+	wave_samples = malloc(32 * sizeof(short));
 
 	desired.freq = sample_rate;
 	desired.format = AUDIO_S16SYS;
@@ -188,8 +214,8 @@ void sound_fini(void) {
 	Pa_Terminate();
 */
 	SDL_CloseAudio();
-	free(lfsr_7);
-	free(lfsr_15);
+	free(lfsr[LFSR_7]);
+	free(lfsr[LFSR_15]);
 }
 
 void stop_sound(void) {
@@ -247,22 +273,25 @@ void sound_reset(void) {
 	
 	memset(&sound.channel1, 0, sizeof(sound.channel1));
 	memset(&sound.channel2, 0, sizeof(sound.channel2));
-	//memset(&sound.channel3, 0, sizeof(sound.channel3));
+	memset(&sound.channel3, 0, sizeof(sound.channel3));
+	memset(&sound.channel4, 0, sizeof(sound.channel4));
 
-	sound.channel1.last_delta_right = 0;
-	sound.channel1.last_delta_left = 0;
-	
-	sound.channel2.last_delta_right = 0;
-	sound.channel2.last_delta_left = 0;
+	sound.channel1.period_counter = 1;
+	sound.channel1.length.i = 16384;
+	sound.channel1.envelope.i = 65536;
+	sound.channel1.sweep.i = 32768;
 
-	//sound.channel1.envelope.
-	
-/*
-	sound.channel_1.is_on = 0;
-	sound.channel_2.is_on = 0;
-	sound.channel_3.is_on = 0;
-	sound.channel_4.is_on = 0;
-*/
+	sound.channel2.period_counter = 1;
+	sound.channel2.length.i = 16384;
+	sound.channel2.envelope.i = 65536;
+
+	sound.channel3.period_counter = 1;
+	sound.channel3.length.i = 16384;
+
+	sound.channel4.period_counter = 1;
+	sound.channel4.length.i = 16384;
+	sound.channel4.envelope.i = 65536;
+
 
 	if ((console == CONSOLE_GBC) || (console == CONSOLE_GBA)) {
 		for (i = 0; i < 16; i++)
@@ -317,7 +346,7 @@ void write_sound(Word address, Byte value) {
 					sound.channel1.envelope.is_zombie = 0;
 */				
 				sound.channel1.envelope.volume = read_io(HWREG_NR12) >> 4;
-				sound.channel1.is_on = 1;
+				sound.channel1.length.is_on = 1;
 				sound.channel1.envelope.length_counter = sound.channel1.envelope.length;
 				/* sweep init */
 				sound.channel1.sweep.hidden_freq = sound.channel1.freq;
@@ -352,7 +381,7 @@ void write_sound(Word address, Byte value) {
 			/* trigger? */
 			if (value & 0x80) {
 				sound.channel2.envelope.volume = read_io(HWREG_NR22) >> 4;
-				sound.channel2.is_on = 1;
+				sound.channel2.length.is_on = 1;
 				sound.channel2.envelope.length_counter = sound.channel2.envelope.length;
 				/* if length is not reloaded, maximum length is played */
 				if (sound.channel2.length.length == 0)
@@ -361,7 +390,7 @@ void write_sound(Word address, Byte value) {
 			}
 			break;
 		case HWREG_NR30: 	/* channel 3 length / cycle duty */
-			sound.channel3.is_on = (value & 0x80) ? 1 : 0;
+			sound.channel3.length.is_on = (value & 0x80) ? 1 : 0;
 			break;
 		case HWREG_NR31: 	/* channel 3 length */
 			sound.channel3.length.length = 256 - value; /* FIXME should be more */
@@ -383,14 +412,38 @@ void write_sound(Word address, Byte value) {
 			sound.channel3.length.is_continuous = value & 0x40 ? 0 : 1;
 			/* trigger? */
 			if (value & 0x80) {
-				sound.channel3.is_on = 1;
+				sound.channel3.length.is_on = 1;
 				/* if length is not reloaded, maximum length is played */
 				if (sound.channel3.length.length == 0)
 					sound.channel3.length.length = 2047;
 				mark_channel_on(3);
 			}
 			break;
-
+		case HWREG_NR41: 	/* channel 4 length */
+			sound.channel4.length.length = 64 - (value & 0x3f);
+			break;
+		case HWREG_NR42:	/* channel 4 envelope */
+			sound.channel4.envelope.length = value & 0x07;
+			sound.channel4.envelope.is_increasing = value & 0x08;
+			sound.channel4.envelope.volume = value >> 4;
+ 			break;
+		case HWREG_NR43:	/* channel 4 poly counter */
+			sound.channel4.period = 4 * ((value & 0x07) + 1) << (((value >> 4) & 0x0f) + 1);
+			sound.channel4.lfsr.size = (value >> 3) & 0x01;
+			break;
+		case HWREG_NR44:	/* channel 4 init, counter selection */
+			sound.channel4.length.is_continuous = value & 0x40 ? 0 : 1;
+			/* trigger? */
+			if (value & 0x80) {
+				sound.channel4.envelope.volume = read_io(HWREG_NR42) >> 4;
+				sound.channel4.length.is_on = 1;
+				sound.channel4.envelope.length_counter = sound.channel4.envelope.length;
+				/* if length is not reloaded, maximum length is played */
+				if (sound.channel4.length.length == 0)
+					sound.channel4.length.length = 2047;
+				mark_channel_on(4);
+			}
+			break;
 		case HWREG_NR50:	/* L/R volume control */
 			sound.right_level = value & 0x07;
 			sound.left_level = value >> 4;
@@ -399,11 +452,11 @@ void write_sound(Word address, Byte value) {
 			sound.is_on = (value & 0x80) ? 1 : 0;
 			break;
 		case HWREG_NR51:	/* output terminal selection */
-			//sound.channel_4.is_on_right = (value & 0x80) ? 1 : 0;
+			sound.channel4.is_on_right = (value & 0x80) ? 1 : 0;
 			sound.channel3.is_on_right = (value & 0x40) ? 1 : 0;
 			sound.channel2.is_on_right = (value & 0x20) ? 1 : 0;
 			sound.channel1.is_on_right = (value & 0x10) ? 1 : 0;
-			//sound.channel_4.is_on_left = (value & 0x08) ? 1 : 0;
+			sound.channel4.is_on_left = (value & 0x08) ? 1 : 0;
 			sound.channel3.is_on_left = (value & 0x04) ? 1 : 0;
 			sound.channel2.is_on_left = (value & 0x02) ? 1 : 0;
 			sound.channel1.is_on_left = (value & 0x01) ? 1 : 0;
@@ -419,8 +472,8 @@ void write_sound(Word address, Byte value) {
  */
 void write_wave(Word address, Byte value) {
 	const short scale = ((HIGH * 2) / 15);
-	sound.channel3.wave.samples[(address - 0xff30) * 2] = ((value >> 4) - 7) * scale;
-	sound.channel3.wave.samples[(address - 0xff30) * 2 + 1] = ((value & 0x0f) - 7) * scale;
+	wave_samples[(address - 0xff30) * 2] = ((value >> 4) - 7) * scale;
+	wave_samples[(address - 0xff30) * 2 + 1] = ((value & 0x0f) - 7) * scale;
 }
 
 
@@ -439,42 +492,325 @@ static inline void mark_channel_off(unsigned int channel) {
  * this clock is the same even in double speed mode.
  */
 
-unsigned total_time = 0;
-
 void sound_update() {
 	if (sound_cycles == 0)
 		return;
 
 	SDL_LockAudio();
 
-	/* channel 1 */
 	update_channel1(sound_cycles);
 	update_channel2(sound_cycles);
 	update_channel3(sound_cycles);
+	update_channel4(sound_cycles);
 
 	blip_end_frame(blip_left, sound_cycles);
 	blip_end_frame(blip_right, sound_cycles);
 
-	total_time += sound_cycles;
 	sound_cycles = 0;
 	SDL_UnlockAudio();
 }
 
+static void update_channel1(int clocks) {
+	unsigned c;
+	int soonest;
+	unsigned t = 0;
+	if (!sound.channel1.length.is_on)
+		return;
 
-
-enum Side {
-	LEFT,
-	RIGHT
-};
-
-static void add_delta(enum Side side, unsigned t, short amp, short *last_delta);
-static inline bool inside_buffer(blip_t* b, unsigned t);
-
-static inline bool inside_buffer(blip_t* b, unsigned t) {
-	
+	while (1) {
+		soonest = get_soonest_clock(sound.channel1.period_counter, sound.channel1.length.i, sound.channel1.envelope.i, sound.channel1.sweep.i, &c);
+		if (c > clocks) {
+			sound.channel1.period_counter -= clocks;
+			sound.channel1.length.i -= clocks;
+			sound.channel1.envelope.i -= clocks;
+			sound.channel1.sweep.i -= clocks;
+			return;
+		}
+		clocks -= c;
+		t += c;
+		sound.channel1.period_counter -= c;
+		sound.channel1.length.i -= c;
+		sound.channel1.envelope.i -= c;
+		sound.channel1.sweep.i -= c;
+		switch (soonest) {
+			case PERIOD:
+				sound.channel1.period_counter = sound.channel1.period + 1;
+				clock_square(&sound.channel1, t);
+				break;
+			case LENGTH:
+				sound.channel1.length.i = 16384;
+				clock_length(&sound.channel1.length, 1);
+				break;
+			case ENVELOPE:
+				sound.channel1.envelope.i = 65536;
+				clock_envelope(&sound.channel1.envelope);
+				break;
+			case SWEEP:
+				sound.channel1.sweep.i = 32768;
+				clock_sweep(&sound.channel1);
+				break;
+		}
+	}
 }
 
-static void add_delta(enum Side side, unsigned t, short amp, short *last_delta) {
+
+static inline void update_channel2(int clocks) {
+	unsigned c;
+	int soonest;
+	unsigned t = 0;
+	if (!sound.channel2.length.is_on)
+		return;
+
+	while (1) {
+		soonest = get_soonest_clock(sound.channel2.period_counter, sound.channel2.length.i, sound.channel2.envelope.i, -1, &c);
+		if (c > clocks) {
+			sound.channel2.period_counter -= clocks;
+			sound.channel2.length.i -= clocks;
+			sound.channel2.envelope.i -= clocks;
+			return;
+		}
+		clocks -= c;
+		t += c;
+		sound.channel2.period_counter -= c;
+		sound.channel2.length.i -= c;
+		sound.channel2.envelope.i -= c;
+		switch (soonest) {
+			case PERIOD:
+				sound.channel2.period_counter = sound.channel2.period + 1;
+				clock_square(&sound.channel2, t);
+				break;
+			case LENGTH:
+				sound.channel2.length.i = 16384;
+				clock_length(&sound.channel2.length, 2);
+				break;
+			case ENVELOPE:
+				sound.channel2.envelope.i = 65536;
+				clock_envelope(&sound.channel2.envelope);
+				break;
+		}
+	}
+}
+
+
+static inline void update_channel3(int clocks) {
+	unsigned c;
+	int soonest;
+	unsigned t = 0;
+	if (!sound.channel3.length.is_on)
+		return;
+
+	while (1) {
+		soonest = get_soonest_clock(sound.channel3.period_counter, sound.channel3.length.i, -1, -1, &c);
+		if (c > clocks) {
+			sound.channel3.period_counter -= clocks;
+			sound.channel3.length.i -= clocks;
+			return;
+		}
+		clocks -= c;
+		t += c;
+		sound.channel3.period_counter -= c;
+		sound.channel3.length.i -= c;
+		switch (soonest) {
+			case PERIOD:
+				sound.channel3.period_counter = sound.channel3.period + 1;
+				clock_sample(&sound.channel3, t);
+				break;
+			case LENGTH:
+				sound.channel3.length.i = 16384;
+				clock_length(&sound.channel3.length, 3);
+				break;
+		}
+	}
+}
+
+static inline void update_channel4(int clocks) {
+	unsigned c;
+	int soonest;
+	unsigned t = 0;
+	if (!sound.channel4.length.is_on)
+		return;
+
+	while (1) {
+		soonest = get_soonest_clock(sound.channel4.period_counter, sound.channel4.length.i, sound.channel4.envelope.i, -1, &c);
+		if (c > clocks) {
+			sound.channel4.period_counter -= clocks;
+			sound.channel4.length.i -= clocks;
+			sound.channel4.envelope.i -= clocks;
+			return;
+		}
+		clocks -= c;
+		t += c;
+		sound.channel4.period_counter -= c;
+		sound.channel4.length.i -= c;
+		sound.channel4.envelope.i -= c;
+		switch (soonest) {
+			case PERIOD:
+				sound.channel4.period_counter = sound.channel4.period + 1;
+				clock_lfsr(&sound.channel4, t);
+				break;
+			case LENGTH:
+				sound.channel4.length.i = 16384;
+				clock_length(&sound.channel4.length, 4);
+				break;
+			case ENVELOPE:
+				sound.channel4.envelope.i = 65536;
+				clock_envelope(&sound.channel4.envelope);
+				break;
+		}
+	}
+}
+
+static void clock_square(SquareChannel *sq, int t) {
+	const int duty_wave_high[4] = {16, 16, 8, 24};
+	const int duty_wave_low[4] = {20, 24, 24, 16};
+
+	if ((sq->period != 0) && (sq->period != 2048)) {
+		sq->duty.i = (sq->duty.i + 1) & 0x1f;
+		if (sq->duty.i == duty_wave_high[sq->duty.duty]) {
+			if (sq->is_on_left)
+				add_delta(LEFT, t, (HIGH / 15) * sq->envelope.volume, &sq->last_delta_left);
+			if (sq->is_on_right)
+				add_delta(RIGHT, t, (HIGH / 15) * sq->envelope.volume, &sq->last_delta_right);
+		}
+		else
+		if (sq->duty.i == duty_wave_low[sq->duty.duty]) {
+			if (sq->is_on_left)
+				add_delta(LEFT, t, (LOW / 15) * sq->envelope.volume, &sq->last_delta_left);
+			if (sq->is_on_right)
+				add_delta(RIGHT, t, (LOW / 15) * sq->envelope.volume, &sq->last_delta_right);
+		}
+	}	
+}
+
+static void clock_sample(SampleChannel *sc, int t) {
+	if ((sc->period != 0) && (sc->period != 2048)) {
+		sc->wave.i = (sc->wave.i + 1) & 0x1f;
+		if (sc->is_on_left)
+			add_delta(LEFT, t,	wave_samples[sc->wave.i] >> sc->volume, &sc->last_delta_left);
+		if (sound.channel3.is_on_right)
+			add_delta(RIGHT, t, wave_samples[sc->wave.i] >> sc->volume, &sc->last_delta_right);
+	}
+}
+
+static void clock_lfsr(NoiseChannel *ns, int t) {
+	if (ns->period != 0) {
+		ns->lfsr.i = (ns->lfsr.i + 1) & lfsr_size[ns->lfsr.size];
+		if (ns->is_on_left)
+			add_delta(LEFT, t, lfsr[ns->lfsr.size][ns->lfsr.i] * ns->envelope.volume, &ns->last_delta_left);
+		if (ns->is_on_right)
+			add_delta(RIGHT, t, lfsr[ns->lfsr.size][ns->lfsr.i] * ns->envelope.volume, &ns->last_delta_right);
+	}
+
+}
+
+static void clock_length(Length *l, unsigned ch) {
+	if (!l->is_continuous) {
+		--l->length;
+		if (l->length == 0) {
+			mark_channel_off(ch);
+			l->is_on = 0;
+		}
+	}
+}
+
+static void clock_envelope(Envelope *e) {
+	if (e->length != 0) {
+		--e->length_counter;
+		if (e->length_counter == 0) {
+			e->length_counter = e->length;
+			if (e->is_increasing) {
+				if (e->volume != 15)
+					++e->volume;
+			} else {
+				if (e->volume != 0)
+					--e->volume;
+				else
+					e->is_zombie = 1;
+			}
+		}
+	}
+}
+
+static void clock_sweep(SquareChannel *sq) {
+	if (sq->sweep.time != 0) {
+		if (sq->sweep.time_counter == 0) {
+			sq->sweep.time_counter = sq->sweep.time;
+			if (sq->sweep.time == 0) {
+				sq->length.is_on = 0;
+				//mark_channel_off(1); /* FIXME: put these in initial check */
+			} else {
+				sweep_freq();
+			}
+		} else
+			--sq->sweep.time_counter;
+	}	
+}
+
+static int get_soonest_clock(unsigned a, unsigned b, unsigned c, unsigned d, unsigned *clocks) {
+	int soonest;
+	if (a < b) {
+		if (a < c) {
+			if (a < d) {
+				soonest = PERIOD;
+				*clocks = a;
+			} else {
+				soonest = SWEEP;
+				*clocks = d;
+			}
+		} else {
+			if (c < d) {
+				soonest = ENVELOPE;
+				*clocks = c;
+			} else {
+				soonest = SWEEP;
+				*clocks = d;
+			}
+		}
+	} else {
+		if (b < c) {
+			if (b < d) {
+				soonest = LENGTH;
+				*clocks = b;
+			} else {
+				soonest = SWEEP;
+				*clocks = d;
+			}
+		} else {
+			if (c < d) {
+				soonest = ENVELOPE;
+				*clocks = c;
+			} else {
+				soonest = SWEEP;
+				*clocks = d;
+			}
+		}
+	}
+	return soonest;
+}
+
+static void sweep_freq() {
+	sound.channel1.freq = sound.channel1.sweep.hidden_freq;
+	if (sound.channel1.freq == 0)
+		sound.channel1.period = 0;
+	else
+		sound.channel1.period = 2048 - sound.channel1.freq;
+	
+	if (!sound.channel1.sweep.is_decreasing) {
+		sound.channel1.sweep.hidden_freq += (sound.channel1.sweep.hidden_freq >> sound.channel1.sweep.shift_number);
+		if (sound.channel1.sweep.hidden_freq > 2047) {
+			sound.channel1.length.is_on = 0;
+			sound.channel1.sweep.hidden_freq = 2048;
+		}
+	} else {
+		sound.channel1.sweep.hidden_freq -= (sound.channel1.sweep.hidden_freq >> sound.channel1.sweep.shift_number);
+		if (sound.channel1.sweep.hidden_freq > 2047) {
+			sound.channel1.sweep.hidden_freq = 0; /* ? */
+			sound.channel1.length.is_on = 0;
+		}
+	}
+}
+
+static void add_delta(int side, unsigned t, short amp, short *last_delta) {
 	blip_t* b;
 	if (side == LEFT) {
 		b = blip_left;
@@ -487,205 +823,6 @@ static void add_delta(enum Side side, unsigned t, short amp, short *last_delta) 
 	*last_delta = amp;
 }
 
-static void clock_square(SquareChannel *sq, int t) {
-	const int duty_wave_high[4] = {16, 16, 8, 24};
-	const int duty_wave_low[4] = {20, 24, 24, 16};
-
-	if ((sq->period != 0) && (sq->period != 2048)) {
-		sq->period_counter = sq->period;
-		sq->duty.i = (sq->duty.i + 1) & 0x1f;
-		if (sq->duty.i == duty_wave_high[sq->duty.duty]) {
-			if (sq->is_on_left)
-				add_delta(LEFT, t, (HIGH / 15) * sq->envelope.volume, &sq->last_delta_left);
-			if (sound.channel1.is_on_right)
-				add_delta(RIGHT, t, (HIGH / 15) * sq->envelope.volume, &sq->last_delta_right);
-		}
-		else
-		if (sq->duty.i == duty_wave_low[sq->duty.duty]) {
-			if (sq->is_on_left)
-				add_delta(LEFT, t, (LOW / 15) * sq->envelope.volume, &sq->last_delta_left);
-			if (sq->is_on_right)
-				add_delta(RIGHT, t, (LOW / 15) * sq->envelope.volume, &sq->last_delta_right);
-		}
-	}	
-}
-/*
-static void clock_length(Length *l, unsigned ch) {
-	if (!sound.channel1.is_continuous) {
-		--sound.channel1.length.length;
-		if (sound.channel1.length.length == 0) {
-			mark_channel_off(1);
-			sound.channel1.is_on = 0;
-		}
-	}
-}
-*/
-
-static inline void update_channel1(int clocks) {
-	unsigned i;
-	if (!sound.channel1.is_on)
-		return;
-	for (i = 0; i < clocks; i++) {
-		/* wave generation */
-		//fprintf(stderr, "%u ", sound.channel1.period_counter);
- 		if (sound.channel1.period_counter == 0) {
-			clock_square(&sound.channel1, i);
-		} else
-			--sound.channel1.period_counter;
-		/* length counter */
-		++sound.channel1.length.i;
-		if (sound.channel1.length.i == 16384) {
-			sound.channel1.length.i = 0;
-			if (!sound.channel1.length.is_continuous) {
-				--sound.channel1.length.length;
-				if (sound.channel1.length.length == 0) {
-					mark_channel_off(1);
-					sound.channel1.is_on = 0;
-				}
-			}
-		}
-		/* envelope */
-		++sound.channel1.envelope.i;
-		if (sound.channel1.envelope.i == 65536) {
-			sound.channel1.envelope.i = 0;
-			if (sound.channel1.envelope.length != 0) {
-				--sound.channel1.envelope.length_counter;
-				if (sound.channel1.envelope.length_counter == 0) {
-					sound.channel1.envelope.length_counter = sound.channel1.envelope.length;
-					if (sound.channel1.envelope.is_increasing) {
-						if (sound.channel1.envelope.volume != 15)
-							++sound.channel1.envelope.volume;
-					} else {
-						if (sound.channel1.envelope.volume != 0)
-							--sound.channel1.envelope.volume;
-						else
-							sound.channel1.envelope.is_zombie = 1;
-					}
-				}
-			}
-		}
-		/* sweep */
-		++sound.channel1.sweep.i;
-		if (sound.channel1.sweep.i == 32768) {
-			sound.channel1.sweep.i = 0;
-			if (sound.channel1.sweep.time != 0) {
-				if (sound.channel1.sweep.time_counter == 0) {
-					sound.channel1.sweep.time_counter = sound.channel1.sweep.time;
-					if (sound.channel1.sweep.time == 0) {
-						sound.channel1.is_on = 0;
-						//mark_channel_off(1); /* FIXME: put these in initial check */
-					} else {
-						sweep_freq();
-					}
-				} else
-					--sound.channel1.sweep.time_counter;
-			}
-		}
-	}
-}
-
-
-static inline void update_channel2(int clocks) {
-	unsigned i;
-	if (!sound.channel2.is_on)
-		return;
-	for (i = 0; i < clocks; i++) {
-		/* wave generation */
-		if (sound.channel2.period_counter == 0) {
-			clock_square(&sound.channel2, i);
-		} else
-			--sound.channel2.period_counter;
-		/* length counter */
-		++sound.channel2.length.i;
-		if (sound.channel2.length.i == 16384) {
-			sound.channel2.length.i = 0;
-			if (!sound.channel2.length.is_continuous) {
-				--sound.channel2.length.length;
-				if (sound.channel2.length.length == 0) {
-					mark_channel_off(2);
-					sound.channel2.is_on = 0;
-				}
-			}
-		}
-		/* envelope */
-		++sound.channel2.envelope.i;
-		if (sound.channel2.envelope.i == 65536) {
-			sound.channel2.envelope.i = 0;
-			if (sound.channel2.envelope.length != 0) {
-				--sound.channel2.envelope.length_counter;
-				if (sound.channel2.envelope.length_counter == 0) {
-					sound.channel2.envelope.length_counter = sound.channel2.envelope.length;
-					if (sound.channel2.envelope.is_increasing) {
-						if (sound.channel2.envelope.volume != 15)
-							++sound.channel2.envelope.volume;
-					} else {
-						if (sound.channel2.envelope.volume != 0)
-							--sound.channel2.envelope.volume;
-						else
-							sound.channel2.envelope.is_zombie = 1;
-					}
-				}
-			}
-		}
-	}
-}
-
-
-static inline void update_channel3(int clocks) {
-	unsigned i;
-	if (!sound.channel3.is_on)
-		return;
-	for (i = 0; i < clocks; i++) {
-		/* wave generation */
-		if (sound.channel3.period_counter == 0) {
-			if ((sound.channel3.period != 0) && (sound.channel3.period != 2048)) {
-				sound.channel3.period_counter = sound.channel3.period;
-				sound.channel3.wave.i = (sound.channel3.wave.i + 1) & 0x1f;
-				if (sound.channel3.is_on_left)
-					add_delta(LEFT, i, sound.channel3.wave.samples[sound.channel3.wave.i] >> sound.channel3.volume, &sound.channel3.last_delta_left);
-				if (sound.channel3.is_on_right)
-					add_delta(RIGHT, i, sound.channel3.wave.samples[sound.channel3.wave.i] >> sound.channel3.volume, &sound.channel3.last_delta_right);
-			}
-		} else
-			--sound.channel3.period_counter;
-		/* length counter */
-		++sound.channel3.length.i;
-		if (sound.channel3.length.i == 16384) {
-			sound.channel3.length.i = 0;
-			if (!sound.channel3.length.is_continuous) {
-				--sound.channel3.length.length;
-				if (sound.channel3.length.length == 0) {
-					mark_channel_off(3);
-					sound.channel3.is_on = 0;
-				}
-			}
-		}
-	}
-}
-
-
-static void sweep_freq() {
-	sound.channel1.freq = sound.channel1.sweep.hidden_freq;
-	if (sound.channel1.freq == 0)
-		sound.channel1.period = 0;
-	else
-		sound.channel1.period = 2048 - sound.channel1.freq;
-	
-	if (!sound.channel1.sweep.is_decreasing) {
-		sound.channel1.sweep.hidden_freq += (sound.channel1.sweep.hidden_freq >> sound.channel1.sweep.shift_number);
-		if (sound.channel1.sweep.hidden_freq > 2047) {
-			sound.channel1.is_on = 0;
-			sound.channel1.sweep.hidden_freq = 2048;
-		}
-	} else {
-		sound.channel1.sweep.hidden_freq -= (sound.channel1.sweep.hidden_freq >> sound.channel1.sweep.shift_number);
-		if (sound.channel1.sweep.hidden_freq > 2047) {
-			sound.channel1.sweep.hidden_freq = 0; /* ? */
-			sound.channel1.is_on = 0;
-		}
-	}
-}
-
 void sound_save(void) {
 	
 	
@@ -695,28 +832,9 @@ void sound_load(void) {
 	
 }
 
-
 static void callback(void* data, Uint8 *stream, int len) {
 	Sint16 *buffer = (Sint16 *)stream;
 		
 	blip_read_samples(blip_left, buffer, len / 4, 1);
 	blip_read_samples(blip_right, buffer + 1, len / 4, 1);
-	
-	/*
-	long period = sample_rate / freq;
-	for (i = 0; i < (len / 2); i += 2) {
-		if (wave_index < (period / 2)) {
-			buffer[i] = 10000;
-			buffer[i + 1] = 10000;
-		}
-		else {
-			buffer[i] = -10000;
-			buffer[i + 1] = -10000;
-		}
-			
-		++wave_index;
-		if (wave_index == period)
-			wave_index = 0;
-	}
-	*/
 }
