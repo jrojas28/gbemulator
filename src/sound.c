@@ -627,9 +627,8 @@ static inline void update_channel4(int clocks) {
 	unsigned c;
 	int soonest;
 	unsigned t = 0;
-	if (!sound.channel4.length.is_on)
+	if ((!sound.channel4.length.is_on) || (sound.channel4.period == 0))
 		return;
-
 	while (1) {
 		soonest = get_soonest_clock(sound.channel4.period_counter, sound.channel4.length.i, sound.channel4.envelope.i, -1, &c);
 		if (c > clocks) {

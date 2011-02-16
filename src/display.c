@@ -76,8 +76,8 @@ extern int console;
 extern int console_mode;
 
 void display_init(void) {
-	display.x_res = DISPLAY_W * 2;
-	display.y_res = DISPLAY_H * 2;
+	display.x_res = DISPLAY_W * 4;
+	display.y_res = DISPLAY_H * 4;
 	display.bpp = 32;
 
 	display.screen = SDL_SetVideoMode(display.x_res, display.y_res, display.bpp, SDL_SWSURFACE);
@@ -443,7 +443,7 @@ Byte check_coincidence(Byte ly, Byte stat) {
 }
 
 void draw_frame() {
-	scale_nn2x(display.display, display.screen);
+	scale_nn4x(display.display, display.screen);
 	SDL_Flip(display.screen);
 }
 
