@@ -77,6 +77,7 @@ int main(int argc, char *argv[]) {
 	unsigned int real_time_passed;
 	unsigned int delays;
 	unsigned int frame_time;
+	bool turbo = false;
 
 	printf("%s v%s\n", PACKAGE_NAME, PACKAGE_VERSION);
 	if (argc != 2) {
@@ -101,7 +102,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	memory_init();
-	console = CONSOLE_AUTO;
+	//console = CONSOLE_AUTO;
+	console = CONSOLE_DMG;
 	console_mode = MODE_DMG;
 	load_rom(argv[1]);
 	display_init();
@@ -139,7 +141,7 @@ int main(int argc, char *argv[]) {
 		delays = core_time / TIMING_INTERVAL;
 		if (delays > delay) {
 			real_time_passed = ((SDL_GetTicks() * 1000000) - real_time);
-			if (core_time > real_time_passed) {
+			if ((core_time > real_time_passed) && (!turbo)) {
 				if (core_time > real_time_passed + (2 * 1000000))
 					SDL_Delay(1);
 				is_delayed = 1;
@@ -161,11 +163,11 @@ int main(int argc, char *argv[]) {
 					exit(0);
 					break;
 				case SDL_KEYDOWN:
-					if(event.key.keysym.sym == SDLK_d) {
+					if (event.key.keysym.sym == SDLK_d) {
 						printf("d\n");
 						debugging = ~debugging;
 					}
-					if(event.key.keysym.sym == SDLK_p) {
+					if (event.key.keysym.sym == SDLK_p) {
 						printf("emulation paused\n");
 						is_paused = ~is_paused;
 						if (is_paused)
@@ -173,20 +175,29 @@ int main(int argc, char *argv[]) {
 						else
 							start_sound();
 					}
-					if(event.key.keysym.sym == SDLK_r) {
+					if (event.key.keysym.sym == SDLK_r) {
 						printf("reset\n");
 						reset();
 					}
-					if(event.key.keysym.sym == SDLK_F1) {
+					if (event.key.keysym.sym == SDLK_F1) {
 						save_state();
 					}
-					if(event.key.keysym.sym == SDLK_F2) {
+					if (event.key.keysym.sym == SDLK_F2) {
 						load_state();
 					}
-				case SDL_KEYUP:
 					if(event.key.keysym.sym == SDLK_ESCAPE) {
 						quit();
 						exit(0);
+					}
+
+					if (event.key.keysym.sym == SDLK_LCTRL) {
+						turbo = 1;
+						is_delayed = 0;
+						break;
+					}
+				case SDL_KEYUP:
+					if (event.key.keysym.sym == SDLK_LCTRL) {
+						turbo = 0;
 					}
 					key_event(&event.key);
 					break;
