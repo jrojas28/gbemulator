@@ -38,44 +38,24 @@
 
 #define MAX_SAMPLE			32767
 #define MIN_SAMPLE			-32767
-
 #define HIGH				(MAX_SAMPLE / 4)
 #define LOW					(MIN_SAMPLE / 4)
 #define	GRND				0
-#define LFSR_7_SIZE			127
-#define LFSR_15_SIZE		32767
+#define LFSR_7_SIZE			128
+#define LFSR_15_SIZE		32768
 #define LFSR_15				0
 #define LFSR_7				1
 
-
-enum Side {
-	LEFT,
-	RIGHT
-};
-
-enum Counter {
-	PERIOD, LENGTH, ENVELOPE, SWEEP
-};
-
-static short *lfsr[2];
-static unsigned lfsr_size[2];
-static short* wave_samples;
-
-static double sample_rate = 44100;
-static blip_t* blip_left;
-static blip_t* blip_right;
-
-static SoundData sound;
+enum Side { LEFT, RIGHT };
+enum Counter { PERIOD, LENGTH, ENVELOPE, SWEEP };
 
 static inline void mark_channel_on(unsigned int channel);
 static inline void mark_channel_off(unsigned int channel);
 static void callback(void* data, Uint8 *stream, int len);
-
 static inline void update_channel1(int clocks);
 static inline void update_channel2(int clocks);
 static inline void update_channel3(int clocks);
 static inline void update_channel4(int clocks);
-
 static void clock_square(SquareChannel *sq, int t);
 static void clock_sample(SampleChannel *sc, int t);
 static void clock_sweep(SquareChannel *sq);
@@ -85,7 +65,6 @@ static void clock_envelope(Envelope *e);
 static void clock_sweep(SquareChannel *sq);
 static int get_soonest_clock(unsigned a, unsigned b, unsigned c, unsigned d, unsigned *clocks);
 static void sweep_freq();
-
 static void add_delta(int side, unsigned t, short amp, short *last_delta);
 
 static const unsigned char dmg_wave[] = {
@@ -99,8 +78,16 @@ static const unsigned char gbc_wave[] = {
 };
 
 bool sound_enabled;
-
 int sound_cycles;
+
+static short *lfsr[2];
+static unsigned lfsr_size[2];
+static short* wave_samples;
+static double sample_rate = 44100;
+static blip_t* blip_left;
+static blip_t* blip_right;
+static SoundData sound;
+static SDL_mutex *sound_mutex;
 
 extern int console;
 extern int console_mode;
@@ -109,7 +96,7 @@ void sound_init(void) {
 	unsigned char r7;
 	unsigned short r15;
 	int i;
-	SDL_AudioSpec desired;
+	SDL_AudioSpec desired, actual;
 	
 	lfsr_size[LFSR_7] = LFSR_7_SIZE;
 	lfsr_size[LFSR_15] = LFSR_15_SIZE;
@@ -141,10 +128,12 @@ void sound_init(void) {
 	
 	wave_samples = malloc(32 * sizeof(short));
 
+	SDL_InitSubSystem(SDL_INIT_AUDIO);
+
 	desired.freq = sample_rate;
 	desired.format = AUDIO_S16SYS;
 	desired.channels = 2;
-	desired.samples = 1024;
+	desired.samples = 2048;
 	desired.callback = callback;
 	desired.userdata = NULL;
 	
@@ -159,6 +148,8 @@ void sound_init(void) {
 
 	blip_right = blip_new(sample_rate / 10);
 	blip_set_rates(blip_right, 4194304, sample_rate);
+
+    sound_mutex = SDL_CreateMutex();
 
 	start_sound();
 
@@ -310,7 +301,7 @@ void sound_reset(void) {
 
 void write_sound(Word address, Byte value) {
 	unsigned freq;
-	sound_update();
+	//sound_update();
 	switch (address) {
 		case HWREG_NR10:	/* channel 1 sweep */
 			sound.channel1.sweep.time = (value >> 4) & 0x07;
@@ -487,17 +478,12 @@ static inline void mark_channel_off(unsigned int channel) {
 	write_io(HWREG_NR52, read_io(HWREG_NR52) & ~(0x01 << (channel - 1)));
 }
 
-
-/* The gameboy sound clock is 4.194304Mhz / 32 = 131072Hz
- * this clock is the same even in double speed mode.
- */
-
 void sound_update() {
 	if (sound_cycles == 0)
 		return;
 
-	SDL_LockAudio();
-
+	//SDL_LockAudio();
+	SDL_LockMutex(sound_mutex);
 	update_channel1(sound_cycles);
 	update_channel2(sound_cycles);
 	update_channel3(sound_cycles);
@@ -505,9 +491,10 @@ void sound_update() {
 
 	blip_end_frame(blip_left, sound_cycles);
 	blip_end_frame(blip_right, sound_cycles);
+	SDL_UnlockMutex(sound_mutex);
 
 	sound_cycles = 0;
-	SDL_UnlockAudio();
+	//SDL_UnlockAudio();
 }
 
 static void update_channel1(int clocks) {
@@ -693,7 +680,7 @@ static void clock_sample(SampleChannel *sc, int t) {
 
 static void clock_lfsr(NoiseChannel *ns, int t) {
 	if (ns->period != 0) {
-		ns->lfsr.i = (ns->lfsr.i + 1) & lfsr_size[ns->lfsr.size];
+		ns->lfsr.i = (ns->lfsr.i + 1) & (lfsr_size[ns->lfsr.size] - 1);
 		if (ns->is_on_left)
 			add_delta(LEFT, t, lfsr[ns->lfsr.size][ns->lfsr.i] * ns->envelope.volume, &ns->last_delta_left);
 		if (ns->is_on_right)
@@ -833,7 +820,10 @@ void sound_load(void) {
 
 static void callback(void* data, Uint8 *stream, int len) {
 	Sint16 *buffer = (Sint16 *)stream;
-		
+	sound_update();
+	
+	SDL_LockMutex(sound_mutex);
 	blip_read_samples(blip_left, buffer, len / 4, 1);
 	blip_read_samples(blip_right, buffer + 1, len / 4, 1);
+	SDL_UnlockMutex(sound_mutex);
 }

@@ -59,13 +59,9 @@ void memory_init(void) {
 void memory_reset(void) {
 	if (internal0 != NULL)
 		free(internal0);
-	if ((console = CONSOLE_GBC) || (console = CONSOLE_GBA)) {
-		internal0 = malloc(sizeof(Byte) * IMEM_SIZE_GBC);
-		memset(internal0, 0, IMEM_SIZE_GBC);
-	} else {
-		internal0 = malloc(sizeof(Byte) * IMEM_SIZE_DMG);
-		memset(internal0, 0, IMEM_SIZE_DMG);
-	}
+
+	internal0 = malloc(sizeof(Byte) * IMEM_SIZE_GBC);
+	memset(internal0, 0, IMEM_SIZE_GBC);
 
 	memset(vector_table, 0, VT_SIZE);
 	memset(himem, 0, SIZE_HIMEM);
@@ -173,13 +169,13 @@ void writeb(Word address, Byte value) {
 				himem[address - MEM_IO] = 0;
 				break;
 			case HWREG_BGP:
-				update_bg_palette();
+				update_bg_palette(0, value);
 				break;
 			case HWREG_OBP0:
-				update_sprite_palette_0();
+				update_sprite_palette(0, value);
 				break;
 			case HWREG_OBP1:
-				update_sprite_palette_1();
+				update_sprite_palette(1, value);
 				break;
 			case HWREG_DMA:
 				launch_dma(value);

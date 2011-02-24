@@ -33,6 +33,7 @@
 #include <stdio.h>
 
 #include <SDL/SDL.h>
+#include <locale.h>
 
 #if !defined _WIN64 && !defined _WIN32
 #include "config.h"
@@ -64,9 +65,11 @@ void quit(void);
 extern int debugging;
 extern int sound_cycles;
 
+
+
 int main(int argc, char *argv[]) {
 	int i;
-	unsigned int is_paused;
+	unsigned int is_paused, is_sound_on;
 	unsigned int cycles;
 	unsigned int core_period;
 	SDL_Event event;
@@ -96,8 +99,8 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 
-	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
-		fprintf(stderr,"sdl video initialisation failed: %s\b", SDL_GetError());
+	if(SDL_Init(SDL_INIT_VIDEO) < 0) {
+		fprintf(stderr,"sdl initialisation failed: %s\b", SDL_GetError());
 		exit(1);
 	}
 
@@ -112,6 +115,7 @@ int main(int argc, char *argv[]) {
 	debug_init();
 	reset();
 	is_paused = 0;
+	is_sound_on = 1;
 	cycles = 0;
 	core_time = 0;
 	delay = 1;
@@ -122,6 +126,8 @@ int main(int argc, char *argv[]) {
 	// main loop
 	// TODO intelligent algorithm for working out number of cycles to execute
 	// based on interrupt predictions...
+	
+	stop_sound();
 	while(1) {
 		if ((!is_paused) && (!is_delayed)) {
 			for (i = 0; i < 10; i++) {
@@ -165,15 +171,21 @@ int main(int argc, char *argv[]) {
 				case SDL_KEYDOWN:
 					if (event.key.keysym.sym == SDLK_d) {
 						printf("d\n");
-						debugging = ~debugging;
+						debugging = !debugging;
 					}
 					if (event.key.keysym.sym == SDLK_p) {
-						printf("emulation paused\n");
-						is_paused = ~is_paused;
+						is_paused = !is_paused;
 						if (is_paused)
 							stop_sound();
 						else
 							start_sound();
+					}
+					if (event.key.keysym.sym == SDLK_s) {
+						is_sound_on = !is_sound_on;
+						if (is_sound_on)
+							start_sound();
+						else
+							stop_sound();
 					}
 					if (event.key.keysym.sym == SDLK_r) {
 						printf("reset\n");
@@ -189,7 +201,6 @@ int main(int argc, char *argv[]) {
 						quit();
 						exit(0);
 					}
-
 					if (event.key.keysym.sym == SDLK_LCTRL) {
 						turbo = 1;
 						is_delayed = 0;
