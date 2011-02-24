@@ -12,7 +12,6 @@ AM_CFLAGS =\
 	 -pedantic\
 	 -g\
 	 -std=c99\
-	 -pg\
 	 -O2
 
 bin_PROGRAMS = gbem
@@ -43,6 +42,6 @@ gbem_SOURCES = \
 	scale.c \
 	scale.h
 
-gbem_LDFLAGS = -pg
+#gbem_LDFLAGS = -pg
 
 gbem_LDADD = 

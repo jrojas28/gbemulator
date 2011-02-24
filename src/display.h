@@ -27,7 +27,10 @@
 #ifndef _DISPLAY_H
 #define _DISPLAY_H
 
+#include <stdbool.h>
+#include <stdint.h>
 #include <SDL/SDL.h>
+#include "config.h"
 
 #define DISPLAY_W 				160
 #define	DISPLAY_H				144
@@ -84,6 +87,7 @@
 #define PRIORITY_HIGH			0
 #define PRIORITY_LOW			1
 
+#define NO_FLIP	0x00
 #define X_FLIP 0x01
 #define Y_FLIP 0x02
 
@@ -94,32 +98,50 @@
 
 #define GB_FRAME_PERIOD ((HBLANK_CYCLES * 154 * 1000) / 4194304)
 
-struct tile;
-struct tprite;
+//struct tile;
+//struct tprite;
+
+typedef Uint32 Colour;
+
+typedef struct palette {
+	Colour colour[4];
+} Palette;
+
+typedef struct tile {
+	struct tile* next;
+	Byte* vram_px;
+	Byte* cache_px[4];
+} Tile;
+
 
 typedef struct {
 	SDL_Surface *screen;
 	SDL_Surface *display;
-	SDL_Palette background_palette;
-	SDL_Palette sprite_palette[2];
-	SDL_Color colours[4];
+	//SDL_Palette background_palette[8];
+	//SDL_Palette sprite_palette[8];
+	//SDL_Color colours[4];
+	Palette bg_pal[8];
+	Palette spr_pal[8];
+	Colour mono_colours[4];
 
 	unsigned int x_res, y_res, bpp;
 	unsigned int cycles;
 	Byte *vram;
 	Byte *oam;
-	Uint32 palette_bg[4];
-	Uint32 palette_sprite_0[4];
-	Uint32 palette_sprite_1[4];
+	//Uint32 palette_bg[4];
+	//Uint32 palette_sprite_0[4];
+	//Uint32 palette_sprite_1[4];
 	int sprite_height;
 	struct tile* tiles_tdt_0;
 	struct tile* tiles_tdt_1;
-	struct sprite* sprites;
+	//struct sprite* sprites;
 	unsigned int vram_bank;
 	unsigned int is_hdma_active;
 	unsigned int cache_size;
 } Display;
 
+
+#if 0
 typedef struct tile {
 	int is_invalidated;
 	SDL_Surface* surface_0;
@@ -133,6 +155,7 @@ typedef struct sprite {
 	SDL_Surface* surface[4];
 	Byte *pixel_data;
 } Sprite;
+#endif
 
 
 void display_update(unsigned int cycles);
@@ -140,9 +163,8 @@ void display_reset(void);
 void display_init(void);
 void display_fini(void);
 void draw_frame(void);
-void update_bg_palette(void);
-void update_sprite_palette_0(void);
-void update_sprite_palette_1(void);
+void update_bg_palette(unsigned n, Byte p);
+void update_sprite_palette(unsigned n, Byte p);
 Byte check_coincidence(Byte ly, Byte stat);
 void launch_dma(Byte address);
 void start_hdma(Byte hdma5);
@@ -156,19 +178,19 @@ static inline void write_vram(const Word address, const Byte value);
 static inline Byte read_vram(const Word address);
 static inline void write_oam(const Word address, const Byte value);
 static inline Byte read_oam(const Word address);
-static inline void tile_invalidate(Tile *tile);
-static inline void sprite_invalidate(Sprite *sprite);
+static void tile_dirty(Tile *t);
+//static inline void sprite_invalidate(Sprite *sprite);
 
 
 static inline void write_vram(const Word address, const Byte value) {
 	extern Display display;
 	// NO else here, tile data tables overlap!
 	if ((address >= TDT_0) && (address < (TDT_0 + TDT_0_LEN))) {
-		tile_invalidate(&display.tiles_tdt_0[(display.vram_bank * 256) + ((address - TDT_0) >> 4)]);
-		sprite_invalidate(&display.sprites[(address - TDT_0) >> 4]);
+		tile_dirty(&display.tiles_tdt_0[(display.vram_bank * 256) + ((address - TDT_0) >> 4)]);
+		//sprite_invalidate(&display.sprites[(address - TDT_0) >> 4]);
 	}
 	if ((address >= TDT_1) && (address < (TDT_1 + TDT_1_LEN)))
-		tile_invalidate(&display.tiles_tdt_1[(display.vram_bank * 256) + ((address - TDT_1) >> 4)]);
+		tile_dirty(&display.tiles_tdt_1[(display.vram_bank * 256) + ((address - TDT_1) >> 4)]);
     display.vram[address - MEM_VIDEO + (display.vram_bank * 0x2000)] = value;
 }
 
@@ -187,15 +209,24 @@ static inline Byte read_oam(const Word address) {
 	return display.oam[address - MEM_OAM];
 }
 
+/*
 static inline void sprite_invalidate(Sprite *sprite) {
 	int i;
 	for (i = 0; i < 4; i++) {
 		sprite->is_invalidated[i] = 1;
 	}
 }
+*/
 
-static inline void tile_invalidate(Tile *tile) {
-	tile->is_invalidated = 1;
+static void tile_dirty(Tile *t) {
+	int i;
+	for (i = 0; i < 4; i++) {
+		if (t->cache_px[i] != NULL) {
+			free(t->cache_px[i]);
+			t->cache_px[i] = NULL;
+		}
+	}
 }
+
 
 #endif	//_DISPLAY_H
