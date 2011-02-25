@@ -134,6 +134,7 @@ typedef struct {
 	int sprite_height;
 	struct tile* tiles_tdt_0;
 	struct tile* tiles_tdt_1;
+	Byte* scan_line;
 	//struct sprite* sprites;
 	unsigned int vram_bank;
 	unsigned int is_hdma_active;

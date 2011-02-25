@@ -61,8 +61,8 @@ static void fill_rectangle(SDL_Surface *surface, const int x, const int y,
 static void tile_init(Tile *t, Byte* vram_px, Tile *next);
 static void tile_fini(Tile *t);
 static void tile_regenerate(Tile *t, const int flip);
-static void tile_blit(Tile *t, SDL_Surface* s, const int x, const int y, const int line, const int flip, const int pal);
-static void sprite_blit(Tile *t, SDL_Surface* s, const int x, const int y, const int line, const int flip, const int pal);
+static void tile_blit(Tile *t, const int x, const int line, const int flip, const int pal);
+static void sprite_blit(Tile *t, const int x, const int line, const int flip, const int pal);
 
 static Colour map_rgb(uint8_t r, uint8_t g, uint8_t b);
 
@@ -140,6 +140,8 @@ void display_init(void) {
 	display.background_palette.colors[4].b = 0xFF;
 	*/
 	
+	display.scan_line = malloc(DISPLAY_W * sizeof(Byte));
+	
 	display.vram = NULL;
 	display.oam = NULL;
 	
@@ -169,6 +171,8 @@ void display_fini(void) {
 	//free(display.sprite_palette[1].colors);
 	free(display.tiles_tdt_0);
 	free(display.tiles_tdt_1);
+	
+	free(display.scan_line);
 	//free(display.sprites);
 
 }
@@ -500,7 +504,7 @@ static void draw_background(const Byte lcdc, const Byte ly, const int colour) {
 			// tile data is at 0x8800-0x97FF (indeces signed)
 			// complement upper bit
 			tile_code ^= 0x80;
-			tile_blit(&display.tiles_tdt_1[tile_code], display.display, x_pos, ly, offset_y, NO_FLIP, 0);
+			tile_blit(&display.tiles_tdt_1[tile_code], x_pos, offset_y, NO_FLIP, 0);
 /*
 			if (colour == COLOUR_0)
 				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x_pos, ly, offset_y, 8);
@@ -509,7 +513,7 @@ static void draw_background(const Byte lcdc, const Byte ly, const int colour) {
 */
 		} else {
 			// tile data is at 0x8000-0x8FFF (indeces unsigned)
-			tile_blit(&display.tiles_tdt_0[tile_code], display.display, x_pos, ly, offset_y, NO_FLIP, 0);
+			tile_blit(&display.tiles_tdt_0[tile_code], x_pos, offset_y, NO_FLIP, 0);
 			/*
 			if (colour == COLOUR_0)
 				tile_blit_0(&display.tiles_tdt_0[tile_code], display.display, x_pos, ly, offset_y, 8);
@@ -613,7 +617,7 @@ static void draw_window(const Byte lcdc, const Byte ly, const int colour) {
 		    // tile data is at 0x8800-0x97FF (indeces signed)
 			// complement upper bit
 			tile_code ^= 0x80;
-			tile_blit(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, NO_FLIP, 0);
+			tile_blit(&display.tiles_tdt_1[tile_code], x, offset_y, NO_FLIP, 0);
 /*
 			if (colour == COLOUR_0)
 				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, 8);
@@ -622,7 +626,7 @@ static void draw_window(const Byte lcdc, const Byte ly, const int colour) {
 */
 	    } else {
 		    // tile data is at 0x8000-0x8FFF (indeces unsigned)
-			tile_blit(&display.tiles_tdt_0[tile_code], display.display, x, ly, offset_y, NO_FLIP, 0);
+			tile_blit(&display.tiles_tdt_0[tile_code], x, offset_y, NO_FLIP, 0);
 /*
 			if (colour == COLOUR_0)
 				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, 8);
@@ -702,7 +706,7 @@ void draw_sprites(const Byte lcdc, const Byte ly, const int priority) {
 		if ((ly >= sprite_y) && (ly < (sprite_y + display.sprite_height)) && (sprite_priority == priority)) {
 			offset_y = (signed)ly - sprite_y;
 			//tile_blit(&display.tiles_tdt_0[tile_code], display.display, x, ly, offset_y, NO_FLIP, 0, 0);
-			sprite_blit(&display.tiles_tdt_0[get_sprite_pattern(i)], display.display, sprite_x, ly, offset_y, (get_sprite_flags(i) & 0x60) >> 5, (get_sprite_flags(i) >> 4) & 0x01);
+			sprite_blit(&display.tiles_tdt_0[get_sprite_pattern(i)], sprite_x, offset_y, (get_sprite_flags(i) & 0x60) >> 5, (get_sprite_flags(i) >> 4) & 0x01);
 			//sprite_blit(&display.sprites[get_sprite_pattern(i)], display.display, sprite_x, ly, offset_y, (get_sprite_flags(i) & 0x60) >> 5);
 		}
 	}
@@ -980,9 +984,10 @@ static void tile_regenerate(Tile *t, const int flip) {
 	//sprite->is_invalidated[flip] = 0;
 }
 
-static void tile_blit(Tile *t, SDL_Surface* s, const int x, const int y, const int line, const int flip, const int pal) {
+static void tile_blit(Tile *t, const int x, const int line, const int flip, const int pal) {
 	int i = 0;
 	Byte colour_code;
+	Byte data;
 	int w = 8;
 	if (x < 0) {
 		if (x < -7)
@@ -998,22 +1003,25 @@ static void tile_blit(Tile *t, SDL_Surface* s, const int x, const int y, const i
 	if (t->cache_px[flip] == NULL)
 		tile_regenerate(t, flip);
 
+	data = 0 | (pal << 2);
+
 	for (; i < w; i++) {
 		colour_code = t->cache_px[flip][line * 8 + i];
 		//if ((line * 8 + i) > 63) {
 		//	fprintf(stderr, "%i, line = %i, i = %i, x = %i\n", (line * 8 + i), line, i, x);
 		//}
-		put_pixel(s, x + i, y, display.bg_pal[pal].colour[colour_code]);
+		display.scan_line[x] = colour_code;
+		//put_pixel(s, x + i, y, display.bg_pal[pal].colour[colour_code]);
 	}
 }
 
-static void sprite_blit(Tile *t, SDL_Surface* s, const int x, const int y, const int line, const int flip, const int pal) {
+static void sprite_blit(Tile *t, const int x, const int line, const int flip, const int pal) {
 	int i = 0;
 	Byte colour_code;
 	int w = 8;
 
 	if (line > 7) {
-		sprite_blit(t->next, s, x, y, line - 7, flip, pal);
+		sprite_blit(t->next, x, line - 7, flip, pal);
 		return;
 	}
 	if (x < 0) {
@@ -1032,8 +1040,8 @@ static void sprite_blit(Tile *t, SDL_Surface* s, const int x, const int y, const
 
 	for (; i < w; i++) {
 		colour_code = t->cache_px[flip][line * 8 + i];
-		if (colour_code != 0)
-				put_pixel(s, x + i, y, display.spr_pal[pal].colour[colour_code]);
+		//if (colour_code != 0)
+		//		put_pixel(s, x + i, y, display.spr_pal[pal].colour[colour_code]);
 	}
 }
 
