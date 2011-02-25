@@ -130,7 +130,7 @@ void scale_nn3x(SDL_Surface* restrict src, SDL_Surface* restrict dest) {
 	}
 }
 
-/* fast? nearest neighbour 3x upscaling */
+/* fast? nearest neighbour 4x upscaling */
 void scale_nn4x(SDL_Surface* restrict src, SDL_Surface* restrict dest) {
 	Uint8 * restrict p_src;
 	Uint8 * restrict p_dest;
