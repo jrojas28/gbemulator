@@ -105,9 +105,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	memory_init();
-	//console = CONSOLE_AUTO;
-	console = CONSOLE_DMG;
-	console_mode = MODE_DMG;
+	console = CONSOLE_AUTO;
+	//console = CONSOLE_DMG;
+	//console_mode = MODE_DMG;
 	load_rom(argv[1]);
 	display_init();
 	joypad_init();
@@ -127,7 +127,7 @@ int main(int argc, char *argv[]) {
 	// TODO intelligent algorithm for working out number of cycles to execute
 	// based on interrupt predictions...
 	
-	stop_sound();
+	//stop_sound();
 	while(1) {
 		if ((!is_paused) && (!is_delayed)) {
 			for (i = 0; i < 10; i++) {
