@@ -84,8 +84,8 @@
 
 #define COLOUR_0				0
 #define COLOUR_123				1
-#define PRIORITY_HIGH			0
-#define PRIORITY_LOW			1
+#define PRIORITY_HIGH			1
+#define PRIORITY_LOW			0
 
 #define NO_FLIP	0x00
 #define X_FLIP 0x01
