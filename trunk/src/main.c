@@ -51,7 +51,7 @@
 #include "debug.h"
 #include "save.h"
 
-#define TIMING_GRANULARITY	1000
+#define TIMING_GRANULARITY	10000
 #define TIMING_INTERVAL		(1000000000 / TIMING_GRANULARITY)
 #define MAX_CPU_CYCLES		200
 
@@ -127,7 +127,6 @@ int main(int argc, char *argv[]) {
 	// TODO intelligent algorithm for working out number of cycles to execute
 	// based on interrupt predictions...
 	
-	//stop_sound();
 	while(1) {
 		if ((!is_paused) && (!is_delayed)) {
 			for (i = 0; i < 10; i++) {

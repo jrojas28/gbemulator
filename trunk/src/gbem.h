@@ -42,7 +42,7 @@
 #define snprintf _snprintf
 #include <BaseTsd.h>
 #define ssize_t SSIZE_T
-#endif
+#endif /* _MSC_VER */
 
 typedef uint8_t Byte;
 typedef uint16_t Word;
@@ -143,6 +143,10 @@ union UWord {
 #define HWREG_HDMA4				0xFF54
 #define HWREG_HDMA5				0xFF55
 #define HWREG_RP				0xFF56
+#define HWREG_BGPI				0xFF68
+#define HWREG_BGPD				0xFF69
+#define HWREG_OBPI				0xFF6A
+#define HWREG_OBPD				0xFF6B
 #define HWREG_SVBK				0xFF70
 #define HWREG_IE				0xFFFF
 

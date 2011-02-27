@@ -123,6 +123,8 @@ typedef struct {
 	Palette bg_pal[8];
 	Palette spr_pal[8];
 	Colour mono_colours[4];
+	Byte *gbc_bg_pal_mem;
+	Byte *gbc_spr_pal_mem;
 
 	unsigned int x_res, y_res, bpp;
 	unsigned int cycles;
@@ -173,7 +175,8 @@ void display_save(void);
 void display_load(void);
 void set_vram_bank(unsigned int bank);
 void set_lcdc(Byte value);
-
+void update_gbc_bg_palette(Byte value);
+void update_gbc_spr_palette(Byte value);
 
 static inline void write_vram(const Word address, const Byte value);
 static inline Byte read_vram(const Word address);
