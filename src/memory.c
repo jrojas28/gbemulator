@@ -169,13 +169,16 @@ void writeb(Word address, Byte value) {
 				himem[address - MEM_IO] = 0;
 				break;
 			case HWREG_BGP:
-				update_bg_palette(0, value);
+				if (console_mode != MODE_GBC_ENABLED) 
+					update_bg_palette(0, value);
 				break;
 			case HWREG_OBP0:
-				update_sprite_palette(0, value);
+				if (console_mode != MODE_GBC_ENABLED)
+					update_sprite_palette(0, value);
 				break;
 			case HWREG_OBP1:
-				update_sprite_palette(1, value);
+				if (console_mode != MODE_GBC_ENABLED)
+					update_sprite_palette(1, value);
 				break;
 			case HWREG_DMA:
 				launch_dma(value);
@@ -215,6 +218,13 @@ void writeb(Word address, Byte value) {
 				if (console_mode == MODE_GBC_ENABLED)
 					start_hdma(value);
 				break;
+			case HWREG_BGPD:
+				update_gbc_bg_palette(value);
+				break;
+			case HWREG_OBPD:
+				update_gbc_spr_palette(value);
+				break;
+
 		}
 		return;
 	}

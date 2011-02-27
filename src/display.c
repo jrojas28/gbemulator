@@ -46,6 +46,7 @@ static void draw_window(const Byte lcdc, const Byte ly);
 static void draw_gbc_window(const Byte lcdc, const Byte ly);
 static void launch_hdma(int length);
 static void draw_sprites(const Byte lcdc, const Byte ly);
+static void draw_gbc_sprites(const Byte lcdc, const Byte ly);
 static inline Byte get_sprite_x(const unsigned int sprite);
 static inline Byte get_sprite_y(const unsigned int sprite);
 static inline Byte get_sprite_pattern(const unsigned int sprite);
@@ -62,9 +63,10 @@ static void tile_init(Tile *t, Byte* vram_px, Tile *next);
 static void tile_fini(Tile *t);
 static void tile_regenerate(Tile *t, const int flip);
 static void tile_blit(Tile *t, const int x, const int line, const int flip, const int pal, const int priority);
-static void sprite_blit(Tile *t, const int x, const int line, const int flip, const int pal, const int priority);
+static void sprite_blit(Tile *t, const int x, const int line, const int flip, const int pal, const int priority, const int h);
 
 static Colour map_rgb(uint8_t r, uint8_t g, uint8_t b);
+static Colour translate_gbc_rgb(uint8_t r, uint8_t g, uint8_t b);
 
 enum { TILE_PALETTE 	= 0x07 };
 enum { TILE_VRAM_BANK 	= 0x08 };
@@ -110,6 +112,9 @@ void display_init(void) {
 	display.mono_colours[2] = map_rgb(0x55, 0x55, 0x55);
 	display.mono_colours[3] = map_rgb(0x00, 0x00, 0x00);
 	
+	display.gbc_bg_pal_mem = malloc(64 * sizeof(Byte));
+	display.gbc_spr_pal_mem = malloc(64 * sizeof(Byte));
+	
 	display.scan_line = malloc(DISPLAY_W * sizeof(Byte));
 	
 	display.vram = NULL;
@@ -134,6 +139,8 @@ void display_fini(void) {
 	free(display.tiles_tdt_0);
 	free(display.tiles_tdt_1);
 	
+	free(display.gbc_bg_pal_mem);
+	free(display.gbc_spr_pal_mem);
 	free(display.scan_line);
 }
 
@@ -162,12 +169,9 @@ void display_reset(void) {
 
 	display.tiles_tdt_0 = malloc(sizeof(Tile) * display.cache_size);
 	display.tiles_tdt_1 = malloc(sizeof(Tile) * display.cache_size);
-	//display.sprites = malloc(sizeof(Sprite) * display.cache_size);
-
+	
 	for (i = 0; i < display.cache_size; i++) {
 		tile_init(&display.tiles_tdt_0[i], display.vram + ((i % 256) * 16) + ((i / 256) * 0x2000), &display.tiles_tdt_0[i + 1]);
-	}
-	for (i = 0; i < display.cache_size; i++) {
 		tile_init(&display.tiles_tdt_1[i], display.vram + ((i % 256) * 16) + 0x0800 + ((i / 256) * 0x2000), &display.tiles_tdt_1[i + 1]);
 	}
 
@@ -175,6 +179,9 @@ void display_reset(void) {
 	update_bg_palette(0, read_io(HWREG_BGP));
 	update_sprite_palette(0, read_io(HWREG_OBP0));
 	update_sprite_palette(1, read_io(HWREG_OBP1));
+	memset(display.gbc_bg_pal_mem, 0xff, 64);
+	memset(display.gbc_spr_pal_mem, 0xff, 64);
+	
 	
 	for (i = 0; i < display.cache_size; i++) {
 		tile_dirty(&display.tiles_tdt_0[i]);
@@ -295,7 +302,7 @@ void display_update(unsigned int cycles) {
 					if (lcdc & 0x20)
 						draw_gbc_window(lcdc, ly);
 					if (lcdc & 0x02)
-						draw_sprites(lcdc, ly);
+						draw_gbc_sprites(lcdc, ly);
 				} else {
 					if (lcdc & 0x01)
 						draw_background(lcdc, ly);
@@ -442,17 +449,7 @@ static void draw_background(const Byte lcdc, const Byte ly) {
 }
 
 static void draw_gbc_background(const Byte lcdc, const Byte ly) {
-#if 0
-	#define TILE_PALETTE		0x07
-	#define TILE_VRAM_BANK		0x08
-	#define TILE_X_FLIP			0x20
-	#define TILE_Y_FLIP			0x40
-	#define TILE_PRIORITY		0x80
-#endif
-
-
-	
-	unsigned int x;
+ 	unsigned int x;
 	Byte scx = read_io(HWREG_SCX);
 	Byte scy = read_io(HWREG_SCY);
 	Byte wx = read_io(HWREG_WX);
@@ -490,22 +487,12 @@ static void draw_gbc_background(const Byte lcdc, const Byte ly) {
 			tile_code ^= 0x80;
 			if (attrib & TILE_VRAM_BANK)
 				tile_code += 256;
-/*
-			if (colour == COLOUR_0)
-				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x_pos, ly, offset_y, 8);
-			if (colour == COLOUR_123)
-				tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x_pos, ly, offset_y, 8);
-*/
+			tile_blit(&display.tiles_tdt_1[tile_code], x_pos, offset_y, (attrib >> 5) & 0x03, attrib & 0x07, PRIORITY_LOW);
+
 		} else {
 			if (attrib & TILE_VRAM_BANK)
 				tile_code += 256;
-			// tile data is at 0x8000-0x8FFF (indeces unsigned)
-/*
-			if (colour == COLOUR_0)
-				tile_blit_0(&display.tiles_tdt_0[tile_code], display.display, x_pos, ly, offset_y, 8);
-			if (colour == COLOUR_123)
-				tile_blit_123(&display.tiles_tdt_0[tile_code], display.display, x_pos, ly, offset_y, 8);
-*/
+			tile_blit(&display.tiles_tdt_0[tile_code], x_pos, offset_y, (attrib >> 5) & 0x03, attrib & 0x07, PRIORITY_LOW);
 		}
 	}
 }
@@ -540,21 +527,9 @@ static void draw_window(const Byte lcdc, const Byte ly) {
 			// complement upper bit
 			tile_code ^= 0x80;
 			tile_blit(&display.tiles_tdt_1[tile_code], x, offset_y, NO_FLIP, 0, PRIORITY_LOW);
-/*
-			if (colour == COLOUR_0)
-				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, 8);
-			if (colour == COLOUR_123)
-				tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, 8);
-*/
 	    } else {
 		    // tile data is at 0x8000-0x8FFF (indeces unsigned)
 			tile_blit(&display.tiles_tdt_0[tile_code], x, offset_y, NO_FLIP, 0, PRIORITY_LOW);
-/*
-			if (colour == COLOUR_0)
-				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, 8);
-			if (colour == COLOUR_123)
-				tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, 8);
-*/
 		}
 	}
 }
@@ -585,7 +560,7 @@ static void draw_gbc_window(const Byte lcdc, const Byte ly) {
         } else {
             // tile map is at 0x9C00-0x9FFF
 			tile_code = display.vram[TILE_MAP_1 - MEM_VIDEO + (tile_y * 32) + tile_x];
-			attrib = display.vram[TILE_MAP_0 - MEM_VIDEO + VRAM_BANK_SIZE + (tile_y * 32) + tile_x];
+			attrib = display.vram[TILE_MAP_1 - MEM_VIDEO + VRAM_BANK_SIZE + (tile_y * 32) + tile_x];
         }
         if ((lcdc & 0x10) == 0) {
 		    // tile data is at 0x8800-0x97FF (indeces signed)
@@ -593,29 +568,18 @@ static void draw_gbc_window(const Byte lcdc, const Byte ly) {
 			tile_code ^= 0x80;
        		if (attrib & TILE_VRAM_BANK)
 				tile_code += 256;
-/*
-			if (colour == COLOUR_0)
-				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, 8);
-			if (colour == COLOUR_123)
-				tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, 8);
-*/
+			tile_blit(&display.tiles_tdt_1[tile_code], x, offset_y, NO_FLIP, attrib & 0x07, PRIORITY_LOW);
 		} else {
+			// tile data is at 0x8000-0x8FFF (indeces unsigned)
 			if (attrib & TILE_VRAM_BANK)
 				tile_code += 256;
-			// tile data is at 0x8000-0x8FFF (indeces unsigned)
-/*
-			if (colour == COLOUR_0)
-				tile_blit_0(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, 8);
-			if (colour == COLOUR_123)
-				tile_blit_123(&display.tiles_tdt_1[tile_code], display.display, x, ly, offset_y, 8);
-*/
+			tile_blit(&display.tiles_tdt_0[tile_code], x, offset_y, NO_FLIP, attrib & 0x07, PRIORITY_LOW);
 		}
 	}
 }
 
-
 /* TODO optimise? */
-void draw_sprites(const Byte lcdc, const Byte ly) {
+static void draw_sprites(const Byte lcdc, const Byte ly) {
 	int sprite_x;
 	int sprite_y;
 	int offset_y;
@@ -627,17 +591,34 @@ void draw_sprites(const Byte lcdc, const Byte ly) {
 		priority = get_sprite_flags(i) >> 7;
 		if ((ly >= sprite_y) && (ly < (sprite_y + display.sprite_height))) {
 			offset_y = (signed)ly - sprite_y;
-			sprite_blit(&display.tiles_tdt_0[get_sprite_pattern(i)], sprite_x, offset_y, (get_sprite_flags(i) & 0x60) >> 5, (get_sprite_flags(i) >> 4) & 0x01, priority);
+			sprite_blit(&display.tiles_tdt_0[get_sprite_pattern(i)], sprite_x, offset_y, (get_sprite_flags(i) & 0x60) >> 5, (get_sprite_flags(i) >> 4) & 0x01, priority, display.sprite_height);
+		}
+	}
+}
+
+static void draw_gbc_sprites(const Byte lcdc, const Byte ly) {
+	int sprite_x;
+	int sprite_y;
+	int offset_y;
+	int i;
+	Byte priority;
+	int tile_code;
+	for (i = OAM_BLOCKS - 1; i >= 0; i--) {
+		sprite_y = get_sprite_y(i) - (signed)16;
+		sprite_x = get_sprite_x(i) - (signed)8;
+		priority = get_sprite_flags(i) >> 7;
+		if ((ly >= sprite_y) && (ly < (sprite_y + display.sprite_height))) {
+			offset_y = (signed)ly - sprite_y;
+			tile_code = get_sprite_pattern(i);
+			if (get_sprite_flags(i) & 0x08)
+				tile_code += 256;
+			sprite_blit(&display.tiles_tdt_0[get_sprite_pattern(i)], sprite_x, offset_y, (get_sprite_flags(i) & 0x60) >> 5, get_sprite_flags(i) & 0x07, priority, display.sprite_height);
 		}
 	}
 }
 
 
 void update_bg_palette(unsigned n, Byte p) {
-	int i;
-	//Byte bgp = read_io(HWREG_BGP);
-	//display.bg_pal.colour = map_rgb(display.colours[bgp & 0x03].r, display.colours[bgp & 0x03].g, display.colours[bgp & 0x03].b);
-	
 	display.bg_pal[n].colour[0] = display.mono_colours[p & 0x03];
 	display.bg_pal[n].colour[1] = display.mono_colours[(p >> 2) & 0x03];
 	display.bg_pal[n].colour[2] = display.mono_colours[(p >> 4) & 0x03];
@@ -645,13 +626,64 @@ void update_bg_palette(unsigned n, Byte p) {
 }
 
 void update_sprite_palette(unsigned n, Byte p) {
-	//Byte obp0 = read_io(HWREG_OBP0);
 	// colour 0 is transparent anyway.
 	display.spr_pal[n].colour[0] = display.mono_colours[p & 0x03];
 	display.spr_pal[n].colour[1] = display.mono_colours[(p >> 2) & 0x03];
 	display.spr_pal[n].colour[2] = display.mono_colours[(p >> 4) & 0x03];
 	display.spr_pal[n].colour[3] = display.mono_colours[(p >> 6) & 0x03];
+}
+
+void update_gbc_bg_palette(Byte value) {
+	Byte bgpi, index;
+	int pal, col, byte1, byte2;
+	Byte r, g, b;
 	
+	bgpi = read_io(HWREG_BGPI);
+	index = bgpi & 0x3f;
+	pal = index / 8;
+	col = (index % 8) / 2;
+
+	display.gbc_bg_pal_mem[index] = value;
+
+	byte1 = display.gbc_bg_pal_mem[(pal * 8) + col * 2];
+	byte2 = display.gbc_bg_pal_mem[(pal * 8) + (col * 2) + 1];
+	r = byte1 & 0x1f;
+	g = ((byte1 >> 5) & 0x07) | ((byte2 & 0x03) << 3);
+	b = (byte2 >> 2) & 0x1f;
+	display.bg_pal[pal].colour[col] = translate_gbc_rgb(r, g, b);
+	
+	/* autoincrement? */
+	if (bgpi & 0x80)
+		write_io(HWREG_BGPI, ((index + 1) & 0x3f) | 0x80);
+}
+
+void update_gbc_spr_palette(Byte value) {
+	Byte obpi, index;
+	int pal, col, byte1, byte2;
+	Byte r, g, b;
+	
+	obpi = read_io(HWREG_OBPI);
+	index = obpi & 0x3f;
+	pal = index / 8;
+	col = (index % 8) / 2;
+
+	display.gbc_spr_pal_mem[index] = value;
+
+	byte1 = display.gbc_spr_pal_mem[(pal * 8) + col * 2];
+	byte2 = display.gbc_spr_pal_mem[(pal * 8) + (col * 2) + 1];
+	r = byte1 & 0x1f;
+	g = ((byte1 >> 5) & 0x07) | ((byte2 & 0x03) << 3);
+	b = (byte2 >> 2) & 0x1f;
+	display.spr_pal[pal].colour[col] = translate_gbc_rgb(r, g, b);
+	
+	/* autoincrement? */
+	if (obpi & 0x80)
+		write_io(HWREG_OBPI, ((index + 1) & 0x3f) | 0x80);
+}
+
+static Colour translate_gbc_rgb(uint8_t r, uint8_t g, uint8_t b) {
+	/* FIXME this simple translation produces far too vibrant colours */
+	return map_rgb(r * 8, g * 8, b * 8);
 }
 
 static inline Byte get_sprite_x(const unsigned int sprite) {
@@ -795,7 +827,7 @@ static inline Colour map_rgb(uint8_t r, uint8_t g, uint8_t b) {
 #if WORDS_BIGENDIAN
 	return b | (g << 8) | (r << 16);
 #else
-	return r | (g << 8) | (b << 16);
+	return b | (g << 8) | (r << 16);
 #endif
 }
 
@@ -891,15 +923,25 @@ static void tile_blit(Tile *t, const int x, const int line, const int flip, cons
 	}
 }
 
-static void sprite_blit(Tile *t, const int x, const int line, const int flip, const int pal, const int priority) {
+static void sprite_blit(Tile *t, const int x, int line, const int flip, const int pal, const int priority, const int h) {
 	int i = 0;
 	Byte colour_code;
 	Byte data;
 	Byte current_px;
 	int w = 8;
 
+	/* when drawing 8x16 sprites, we need to flip the two 8x8 tiles round */
+	if (h == 16) {
+		if (flip & Y_FLIP) {
+			if (line < 8) {
+				line += 8;
+			} else {
+				line -= 8;
+			}
+		}
+	}
 	if (line > 7) {
-		sprite_blit(t->next, x, line - 8, flip, pal, priority);
+		sprite_blit(t->next, x, line - 8, flip, pal, priority, 8);
 		return;
 	}
 	if (x < 0) {
@@ -932,7 +974,6 @@ static void sprite_blit(Tile *t, const int x, const int line, const int flip, co
 		}
 	}
 }
-
 
 void display_save(void) {
 	save_uint("display.cycles", display.cycles);
@@ -974,7 +1015,7 @@ void display_load(void) {
 		tile_dirty(&display.tiles_tdt_0[i]);
 	}
 	for (i = 0; i < display.cache_size; i++) {
-		display.tiles_tdt_1[i].vram_px = display.vram + (i * 16) + 0x0800;
+		//display.tiles_tdt_1[i].vram_px = display.vram + (i * 16) + 0x0800;
 		tile_dirty(&display.tiles_tdt_1[i]);
 	}
 }
