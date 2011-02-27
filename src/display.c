@@ -612,7 +612,7 @@ static void draw_gbc_sprites(const Byte lcdc, const Byte ly) {
 			tile_code = get_sprite_pattern(i);
 			if (get_sprite_flags(i) & 0x08)
 				tile_code += 256;
-			sprite_blit(&display.tiles_tdt_0[get_sprite_pattern(i)], sprite_x, offset_y, (get_sprite_flags(i) & 0x60) >> 5, get_sprite_flags(i) & 0x07, priority, display.sprite_height);
+			sprite_blit(&display.tiles_tdt_0[tile_code], sprite_x, offset_y, (get_sprite_flags(i) & 0x60) >> 5, get_sprite_flags(i) & 0x07, priority, display.sprite_height);
 		}
 	}
 }
@@ -718,7 +718,7 @@ static void launch_hdma(int length) {
 	Word src = (read_io(HWREG_HDMA2) & 0xf0) + ((Word)read_io(HWREG_HDMA1) << 8);
 	Word dest = (read_io(HWREG_HDMA4) & 0xf0) + ((Word)(read_io(HWREG_HDMA3) & 0x1f) << 8) + MEM_VIDEO;
 	
-	fprintf(stderr, "src: %hx. dest: %hx. length: %i:\n", src, dest, length);
+	//fprintf(stderr, "src: %hx. dest: %hx. length: %i:\n", src, dest, length);
 	//fprintf(stderr, "hdma1: %hhx. hdma2: %hhx. hdma3: %hhx. hdma4: %hhx. hdma5: %hhx\n", read_io(HWREG_HDMA1), read_io(HWREG_HDMA3), read_io(HWREG_HDMA3), read_io(HWREG_HDMA4), read_io(HWREG_HDMA5));
 	length *= 16;
 	assert(length <= 0x800);
@@ -737,7 +737,7 @@ static void launch_hdma(int length) {
 void start_hdma(Byte hdma5) {
 	if (hdma5 & 0x80) {
 		/* hblank dma */
-		fprintf(stderr, "hblank dma: %hhx ", read_io(HWREG_HDMA5));
+		//fprintf(stderr, "hblank dma: %hhx ", read_io(HWREG_HDMA5));
 		write_io(HWREG_HDMA5, read_io(HWREG_HDMA5) & (~0x80));
 		display.is_hdma_active = 1;
 	} else {
@@ -747,8 +747,8 @@ void start_hdma(Byte hdma5) {
 			return;
 		}
 		/* general dma */
-		fprintf(stderr, "general dma: hdma5: %hhx\n", hdma5);
-		fprintf(stderr, "general dma ");
+		//fprintf(stderr, "general dma: hdma5: %hhx\n", hdma5);
+		//fprintf(stderr, "general dma ");
 		launch_hdma((hdma5 & 0x7f) + 1);
 		write_io(HWREG_HDMA5, 0xFF);
 	}
