@@ -26,7 +26,7 @@ AC_PATH_XTRA
 
 AC_C_BIGENDIAN
 
-LT_INIT
+#LT_INIT
 
 dnl ***************************************************************************
 dnl Check for SDL
