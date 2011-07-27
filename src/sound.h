@@ -27,7 +27,7 @@
 #ifndef _SOUND_H
 #define _SOUND_H
 
-#include <stdbool.h>
+//#include <stdbool.h>
 
 #include "gbem.h"
 
@@ -50,16 +50,16 @@ typedef struct {
 typedef struct {
 	unsigned i;
 	unsigned length;
-	bool is_continuous;
-	bool is_on;
+	int is_continuous;
+	int is_on;
 } Length;
 
 typedef struct {
 	unsigned volume;
-	bool is_increasing;
+	int is_increasing;
 	unsigned length_counter;
 	unsigned length;
-	bool is_zombie;
+	int is_zombie;
 	unsigned i;
 } Envelope;
 
@@ -67,7 +67,7 @@ typedef struct {
 	unsigned hidden_freq;
 	unsigned time_counter;
 	unsigned time;
-	bool is_decreasing;
+	int is_decreasing;
 	unsigned shift_number;
 	unsigned i;
 } Sweep;
@@ -85,8 +85,8 @@ typedef struct {
 	short last_delta_right;
 	short last_delta_left;
 	
-	bool is_on_left;
-	bool is_on_right;
+	int is_on_left;
+	int is_on_right;
 } SquareChannel;
 
 typedef struct {
@@ -99,8 +99,8 @@ typedef struct {
 	short last_delta_right;
 	short last_delta_left;
 	
-	bool is_on_left;
-	bool is_on_right;
+	int is_on_left;
+	int is_on_right;
 } SampleChannel;
 
 typedef struct {
@@ -111,12 +111,12 @@ typedef struct {
 	unsigned period_counter;
 	short last_delta_right;
 	short last_delta_left;
-	bool is_on_left;
-	bool is_on_right;
+	int is_on_left;
+	int is_on_right;
 } NoiseChannel;
 
 typedef struct {
-	bool is_on;
+	int is_on;
 	unsigned right_level;
 	unsigned left_level;
 	SquareChannel channel1;

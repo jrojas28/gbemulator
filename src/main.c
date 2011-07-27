@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
 	unsigned int real_time_passed;
 	unsigned int delays;
 	unsigned int frame_time;
-	bool turbo = false;
+	int is_turbo = 0;
 
 	printf("%s v%s\n", PACKAGE_NAME, PACKAGE_VERSION);
 	if (argc != 2) {
@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
 		delays = core_time / TIMING_INTERVAL;
 		if (delays > delay) {
 			real_time_passed = ((SDL_GetTicks() * 1000000) - real_time);
-			if ((core_time > real_time_passed) && (!turbo)) {
+			if ((core_time > real_time_passed) && (!is_turbo)) {
 				if (core_time > real_time_passed + (2 * 1000000))
 					SDL_Delay(1);
 				is_delayed = 1;
@@ -201,13 +201,13 @@ int main(int argc, char *argv[]) {
 						exit(0);
 					}
 					if (event.key.keysym.sym == SDLK_LCTRL) {
-						turbo = 1;
+						is_turbo = 1;
 						is_delayed = 0;
 						break;
 					}
 				case SDL_KEYUP:
 					if (event.key.keysym.sym == SDLK_LCTRL) {
-						turbo = 0;
+						is_turbo = 0;
 					}
 					key_event(&event.key);
 					break;
