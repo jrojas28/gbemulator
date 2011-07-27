@@ -77,13 +77,13 @@ static const unsigned char gbc_wave[] = {
 	0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff
 };
 
-bool sound_enabled;
+int sound_enabled;
 int sound_cycles;
 
 static short *lfsr[2];
 static unsigned lfsr_size[2];
 static short* wave_samples;
-static double sample_rate = 44100;
+static int sample_rate = 44100;
 static blip_t* blip_left;
 static blip_t* blip_right;
 static SoundData sound;
@@ -95,7 +95,7 @@ extern int console_mode;
 void sound_init(void) {
 	unsigned char r7;
 	unsigned short r15;
-	int i;
+	unsigned int i;
 	SDL_AudioSpec desired, actual;
 	
 	lfsr_size[LFSR_7] = LFSR_7_SIZE;
@@ -498,7 +498,7 @@ void sound_update() {
 }
 
 static void update_channel1(int clocks) {
-	unsigned c;
+	int c;
 	int soonest;
 	unsigned t = 0;
 	if (!sound.channel1.length.is_on)
@@ -542,7 +542,7 @@ static void update_channel1(int clocks) {
 
 
 static inline void update_channel2(int clocks) {
-	unsigned c;
+	int c;
 	int soonest;
 	unsigned t = 0;
 	if (!sound.channel2.length.is_on)
@@ -580,7 +580,7 @@ static inline void update_channel2(int clocks) {
 
 
 static inline void update_channel3(int clocks) {
-	unsigned c;
+	int c;
 	int soonest;
 	unsigned t = 0;
 	if (!sound.channel3.length.is_on)
@@ -611,7 +611,7 @@ static inline void update_channel3(int clocks) {
 }
 
 static inline void update_channel4(int clocks) {
-	unsigned c;
+	int c;
 	int soonest;
 	unsigned t = 0;
 	if ((!sound.channel4.length.is_on) || (sound.channel4.period == 0))

@@ -27,10 +27,9 @@
 #ifndef _DISPLAY_H
 #define _DISPLAY_H
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <SDL/SDL.h>
-#include "config.h"
+//#include "config.h"
 
 #define DISPLAY_W 				160
 #define	DISPLAY_H				144
