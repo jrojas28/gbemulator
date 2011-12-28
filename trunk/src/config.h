@@ -1,9 +1,9 @@
-/* windows_config.h. */
+/* config.h. */
 
 /* Define if you have the `getline' function.
  * If the compiler does not have getline, undefine this: a replacement
  * is included */
-/* #  define HAVE_GETLINE */
+#define HAVE_GETLINE 1
 
 /* Name of package */
 #define PACKAGE "gbem"

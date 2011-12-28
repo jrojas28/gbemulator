@@ -34,7 +34,7 @@
 #else
 #include "windows_config.h"
 
-/* MSC does not support these C99 features properly.
+/* MSVC does not support these C99 features.
  * It really is a terrible compiler....
  */
 #define inline __forceinline

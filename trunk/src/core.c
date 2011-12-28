@@ -37,9 +37,8 @@
 #include "debug.h"
 #include "save.h"
 
-/* definitions to keep things tidy */
 #define	REG_A   (core.reg_af.b.h)
-#define	REG_F   (core.reg_af.b.l)	/* Watch it: This must be set manually. */
+#define	REG_F   (core.reg_af.b.l) 	// must be set manually
 #define	REG_B   (core.reg_bc.b.h)
 #define	REG_C   (core.reg_bc.b.l)
 #define	REG_D   (core.reg_de.b.h)
@@ -126,13 +125,6 @@ int execute_cycles(int max_cycles) {
 			sound_cycles += max_cycles - total_cycles;
 			return max_cycles;
 		}
-/*
-		cout << hex << setfill('0') << setw(4) <<  REG_PC << setfill(' ') << dec << "\t";
-		cout << left;
-		debugger_->disassembleInstruction(REG_PC);
-		cout << right;
-		cout << endl;
-*/
 
 		if (debugging)
 			disasm_exec(REG_PC);
@@ -1354,7 +1346,7 @@ int execute_cycles(int max_cycles) {
 				cycles = 4;
 				break;
 			case 0x3F:   // CCF
-				if (FLAG_C == 1)
+				if (FLAG_C != 0)
 					FLAG_C = 0;
 				else
 					FLAG_C = 1;
@@ -1759,19 +1751,19 @@ void dump_state() {
 	printf("SP: %04x\t", (unsigned int) REG_SP);
 	
 	printf("set flags: ");
-	if (FLAG_Z == 1)
+	if (FLAG_Z != 0)
 		printf("Z");
 	else
 		printf(" ");
-	if (FLAG_N == 1)
+	if (FLAG_N != 0)
 		printf("N");
 	else
 		printf(" ");
-	if (FLAG_H == 1)
+	if (FLAG_H != 0)
 		printf("H");
 	else
 		printf(" ");
-	if (FLAG_C == 1)
+	if (FLAG_C != 0)
 		printf("C");
 	else
 		printf(" ");
@@ -1787,7 +1779,6 @@ void dump_state() {
 */
 //	cout << endl << dec;
 }
-
 
 
 static inline void handle_interrupts() {
@@ -1853,7 +1844,6 @@ static inline void handle_interrupts() {
 		return;
 	}
 }
-
 
 // ADD
 static inline Byte add_bbb(Byte a, Byte b) {
