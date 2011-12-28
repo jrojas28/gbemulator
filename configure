@@ -711,13 +711,6 @@ CFLAGS
 LDFLAGS
 LIBS
 CPPFLAGS
-CC
-LDFLAGS
-LIBS
-CPPFLAGS
-CC
-LIBS
-CPPFLAGS
 CPP
 XMKMF'
 
@@ -1344,14 +1337,15 @@ Optional Features:
 			  (and sometimes confusing) to the casual installer
   --disable-dependency-tracking  speeds up one-time build
   --enable-dependency-tracking   do not reject slow dependency extractors
-  --disable-sdltest       Do not try to compile and run a test SDL program
+  --disable-sdltest       do not try to compile and run a test SDL program
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
   --with-x                use the X Window System
-  --with-sdl-prefix=PFX   Prefix where SDL is installed (optional)
-  --with-sdl-exec-prefix=PFX Exec prefix where SDL is installed (optional)
+  --with-sdl-prefix=PFX   prefix where SDL is installed (optional)
+  --with-sdl-exec-prefix=PFX
+                          exec prefix where SDL is installed (optional)
 
 Some influential environment variables:
   CC          C compiler command
@@ -6294,12 +6288,14 @@ else
 fi
 
 
+
 # Check whether --with-sdl-exec-prefix was given.
 if test "${with_sdl_exec_prefix+set}" = set; then :
   withval=$with_sdl_exec_prefix; sdl_exec_prefix="$withval"
 else
   sdl_exec_prefix=""
 fi
+
 
 # Check whether --enable-sdltest was given.
 if test "${enable_sdltest+set}" = set; then :
@@ -6310,22 +6306,18 @@ fi
 
 
   if test x$sdl_exec_prefix != x ; then
-    sdl_config_args="$sdl_config_args --exec-prefix=$sdl_exec_prefix"
-    if test x${SDL_CONFIG+set} != xset ; then
-      SDL_CONFIG=$sdl_exec_prefix/bin/sdl-config
-    fi
+     sdl_args="$sdl_args --exec-prefix=$sdl_exec_prefix"
+     if test x${SDL_CONFIG+set} != xset ; then
+        SDL_CONFIG=$sdl_exec_prefix/bin/sdl-config
+     fi
   fi
   if test x$sdl_prefix != x ; then
-    sdl_config_args="$sdl_config_args --prefix=$sdl_prefix"
-    if test x${SDL_CONFIG+set} != xset ; then
-      SDL_CONFIG=$sdl_prefix/bin/sdl-config
-    fi
+     sdl_args="$sdl_args --prefix=$sdl_prefix"
+     if test x${SDL_CONFIG+set} != xset ; then
+        SDL_CONFIG=$sdl_prefix/bin/sdl-config
+     fi
   fi
 
-  as_save_PATH="$PATH"
-  if test "x$prefix" != xNONE; then
-    PATH="$prefix/bin:$prefix/usr/bin:$PATH"
-  fi
   # Extract the first word of "sdl-config", so it can be a program name with args.
 set dummy sdl-config; ac_word=$2
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
@@ -6367,7 +6359,6 @@ $as_echo "no" >&6; }
 fi
 
 
-  PATH="$as_save_PATH"
   min_sdl_version=$SDL_REQUIRED
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for SDL - version >= $min_sdl_version" >&5
 $as_echo_n "checking for SDL - version >= $min_sdl_version... " >&6; }
@@ -6375,21 +6366,19 @@ $as_echo_n "checking for SDL - version >= $min_sdl_version... " >&6; }
   if test "$SDL_CONFIG" = "no" ; then
     no_sdl=yes
   else
-    SDL_CFLAGS=`$SDL_CONFIG $sdl_config_args --cflags`
-    SDL_LIBS=`$SDL_CONFIG $sdl_config_args --libs`
+    SDL_CFLAGS=`$SDL_CONFIG $sdlconf_args --cflags`
+    SDL_LIBS=`$SDL_CONFIG $sdlconf_args --libs`
 
-    sdl_major_version=`$SDL_CONFIG $sdl_config_args --version | \
+    sdl_major_version=`$SDL_CONFIG $sdl_args --version | \
            sed 's/\([0-9]*\).\([0-9]*\).\([0-9]*\)/\1/'`
-    sdl_minor_version=`$SDL_CONFIG $sdl_config_args --version | \
+    sdl_minor_version=`$SDL_CONFIG $sdl_args --version | \
            sed 's/\([0-9]*\).\([0-9]*\).\([0-9]*\)/\2/'`
     sdl_micro_version=`$SDL_CONFIG $sdl_config_args --version | \
            sed 's/\([0-9]*\).\([0-9]*\).\([0-9]*\)/\3/'`
     if test "x$enable_sdltest" = "xyes" ; then
       ac_save_CFLAGS="$CFLAGS"
-      ac_save_CXXFLAGS="$CXXFLAGS"
       ac_save_LIBS="$LIBS"
       CFLAGS="$CFLAGS $SDL_CFLAGS"
-      CXXFLAGS="$CXXFLAGS $SDL_CFLAGS"
       LIBS="$LIBS $SDL_LIBS"
       rm -f conf.sdltest
       if test "$cross_compiling" = yes; then :
@@ -6466,7 +6455,6 @@ rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
 fi
 
        CFLAGS="$ac_save_CFLAGS"
-       CXXFLAGS="$ac_save_CXXFLAGS"
        LIBS="$ac_save_LIBS"
      fi
   fi
@@ -6488,7 +6476,6 @@ $as_echo "no" >&6; }
        else
           echo "*** Could not run SDL test program, checking why..."
           CFLAGS="$CFLAGS $SDL_CFLAGS"
-          CXXFLAGS="$CXXFLAGS $SDL_CFLAGS"
           LIBS="$LIBS $SDL_LIBS"
           cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
@@ -6528,7 +6515,6 @@ fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
           CFLAGS="$ac_save_CFLAGS"
-          CXXFLAGS="$ac_save_CXXFLAGS"
           LIBS="$ac_save_LIBS"
        fi
      fi
