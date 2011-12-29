@@ -93,7 +93,6 @@ static inline Byte* get_vector(Word address) {
 	return vector_table[address];
 }
 
-
 static inline Byte readb(Word address) {
 	extern Byte** vector_table;
 	return *(vector_table[address >> 8] + (address & 0xFF));
