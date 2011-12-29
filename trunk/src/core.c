@@ -58,6 +58,8 @@
 
 
 static inline void handle_interrupts();
+static inline void handle_interrupt(Byte interrupt, Word Vector, Byte reg_if);
+
 
 /* arithmetic */
 static inline Byte add_bbb(Byte a, Byte b);
@@ -119,9 +121,11 @@ int execute_cycles(int max_cycles) {
 		handle_interrupts();
 
 		if (core.is_halted == 1) {
+/*
 			if (core.ime == 0) {
 				core.is_halted = 0;
 			}
+*/
 			sound_cycles += max_cycles - total_cycles;
 			return max_cycles;
 		}
@@ -1784,66 +1788,47 @@ void dump_state() {
 
 static inline void handle_interrupts() {
 	Byte reg_if, reg_ie;
-	// return if interrupts are disabled
-	if (core.ime == 0)
-	    return;
 	reg_if = readb(HWREG_IF);
 	reg_ie = readb(HWREG_IE);
 	if (reg_if == 0)
 		return;
 	// check for vblank interrupt, and check if it is enabled
 	if ((reg_if & INT_VBLANK) && (reg_ie & INT_VBLANK)) {
-		// unset interrupt bit in IF.
-		writeb(HWREG_IF, reg_if & ~(INT_VBLANK));
-		// disable further interrupts
-		core.ime = 0;
-		// call isr
-		push(REG_PC);
-		REG_PC = MEM_INT_VBLANK;
-		// unhalt the core
-		core.is_halted = 0;
+		handle_interrupt(INT_VBLANK, MEM_INT_VBLANK, reg_if);
 		return;
 	}
 	// check for stat interrupt, and check if it is enabled
 	if ((reg_if & INT_STAT) && (reg_ie & INT_STAT)) {
-		writeb(HWREG_IF, reg_if & ~(INT_STAT));
-		core.ime = 0;
-		push(REG_PC);
-		REG_PC = MEM_INT_STAT;
-		// unhalt the core
-		core.is_halted = 0;
+		handle_interrupt(INT_STAT, MEM_INT_STAT, reg_if);
 		return;
 	}
 	// check for timer interrupt, and check if it is enabled
 	if ((reg_if & INT_TIMER) && (reg_ie & INT_TIMER)) {
-		writeb(HWREG_IF, reg_if & ~(INT_TIMER));
-		core.ime = 0;
-		push(REG_PC);
-		REG_PC = MEM_INT_TIMER;
-		// unhalt the core
-		core.is_halted = 0;
+		handle_interrupt(INT_TIMER, MEM_INT_TIMER, reg_if);
 		return;
 	}
 	// check for serial interrupt, and check if it is enabled
 	if ((reg_if & INT_SERIAL)  && (reg_ie & INT_SERIAL)) {
-		writeb(HWREG_IF, reg_if & ~(INT_SERIAL));
-		core.ime = 0;
-		push(REG_PC);
-		REG_PC = MEM_INT_SERIAL;
-		// unhalt the core
-		core.is_halted = 0;
+		handle_interrupt(INT_SERIAL, MEM_INT_SERIAL, reg_if);
 		return;
 	}
 	// check for button interrupt, and check if it is enabled
 	if ((reg_if & INT_BUTTON) && (reg_ie & INT_BUTTON)) {
-		writeb(HWREG_IF, reg_if & ~(INT_BUTTON));
-		core.ime = 0;
-		push(REG_PC);
-		REG_PC = MEM_INT_BUTTON;
-		// unhalt the core
-		core.is_halted = 0;
+		handle_interrupt(INT_BUTTON, MEM_INT_BUTTON, reg_if);
 		return;
 	}
+}
+
+static inline void handle_interrupt(Byte interrupt, Word Vector, Byte reg_if) {
+	// handle only if interrupts are actually enabled
+	if (core.ime != 0) {
+		writeb(HWREG_IF, reg_if & ~(interrupt));
+		core.ime = 0;
+		push(REG_PC);
+		REG_PC = Vector;
+	}
+	// core is unhalted regardless of whether interrupts are enabled
+	core.is_halted = 0;
 }
 
 // ADD
@@ -2132,68 +2117,6 @@ static inline Word pop() {
 	REG_SP += 2;
 	return readw(REG_SP - 2);
 }
-
-#if 0
-// FIXME: busted...
-static inline Byte daa(Byte a) {
-	Word temp = a;
-	if (FLAG_N) {
-		if (FLAG_H)
-			temp = (temp - 0x06) & 0xff;
-		if (FLAG_C)
-			temp -= 0x60;
-	} else {
-		if (FLAG_H || ((a & 0x0f) > 9))
-			temp += 0x06;
-		if (FLAG_C || (a > 0x9f))
-			temp += 0x60;
-	}
-	if (temp & 0x100)
-		FLAG_C = 1;
-	FLAG_H = 0;
-	temp &= 0xff;
-	if (temp == 0)
-		FLAG_Z = 1;
-	else
-		FLAG_Z = 0;
-	return temp;
-}
-#endif
-
-#if 0
-static inline Byte daa(Byte a) {
-	Byte temp = a;
-	int set_carry = 0;
-	if (FLAG_H != 0) {
-		if ((FLAG_H != 0) || ((a & 0x0f) > 9)) {
-			temp -= 0x06;
-		}
-		if ((FLAG_C != 0) || (a > 0x99)) {
-			temp -= 0x60;
-			set_carry = 1;
-		}
-	} else {
-		if ((FLAG_H != 0) || ((a & 0x0f) > 9)) {
-			temp += 0x06;
-		}
-		if ((FLAG_C != 0) || (a > 0x99)) {
-			temp += 0x60;
-			set_carry = 1;
-		}
-	}
-	if (set_carry)
-		FLAG_C = 1;
-	else
-		FLAG_C = 0;
-	FLAG_H = 0;
-	if (temp == 0)
-		FLAG_Z = 1;
-	else
-		FLAG_Z = 0;
-
-	return temp;
-}
-#endif
 
 static inline Byte daa(Byte a) {
 	unsigned int temp = a;
