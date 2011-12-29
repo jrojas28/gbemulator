@@ -28,7 +28,6 @@
 #include <assert.h>
 #include <stdint.h>
 #include "scale.h"
-#include "hqx/hqx.h"
  
 static inline Uint32 get_pixel(const SDL_Surface *surface, const int x, 
 			const int y);

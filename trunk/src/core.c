@@ -128,6 +128,7 @@ int execute_cycles(int max_cycles) {
 
 		if (debugging)
 			disasm_exec(REG_PC);
+
 		// switch opcode
 		switch (readb(REG_PC++)) {
 			/* 8bit loads: imm -> reg */
@@ -2132,10 +2133,10 @@ static inline Word pop() {
 	return readw(REG_SP - 2);
 }
 
+#if 0
 // FIXME: busted...
 static inline Byte daa(Byte a) {
 	Word temp = a;
-	int set_carry = 0;
 	if (FLAG_N) {
 		if (FLAG_H)
 			temp = (temp - 0x06) & 0xff;
@@ -2157,6 +2158,72 @@ static inline Byte daa(Byte a) {
 		FLAG_Z = 0;
 	return temp;
 }
+#endif
+
+#if 0
+static inline Byte daa(Byte a) {
+	Byte temp = a;
+	int set_carry = 0;
+	if (FLAG_H != 0) {
+		if ((FLAG_H != 0) || ((a & 0x0f) > 9)) {
+			temp -= 0x06;
+		}
+		if ((FLAG_C != 0) || (a > 0x99)) {
+			temp -= 0x60;
+			set_carry = 1;
+		}
+	} else {
+		if ((FLAG_H != 0) || ((a & 0x0f) > 9)) {
+			temp += 0x06;
+		}
+		if ((FLAG_C != 0) || (a > 0x99)) {
+			temp += 0x60;
+			set_carry = 1;
+		}
+	}
+	if (set_carry)
+		FLAG_C = 1;
+	else
+		FLAG_C = 0;
+	FLAG_H = 0;
+	if (temp == 0)
+		FLAG_Z = 1;
+	else
+		FLAG_Z = 0;
+
+	return temp;
+}
+#endif
+
+static inline Byte daa(Byte a) {
+	unsigned int temp = a;
+	if (!FLAG_N) {
+		if (FLAG_H || ((temp & 0x0f) > 9))
+			temp += 6;
+		if (FLAG_C || (temp > 0x9f))
+			temp += 0x60;
+	} else {
+		if (FLAG_H)
+			temp = (temp - 6) & 0xff;
+		if (FLAG_C)
+			temp -= 0x60;
+	}
+
+	if (temp & 0x100)
+		FLAG_C = 1;
+
+	FLAG_H = 0;
+
+	temp &= 0xff;
+
+	if (temp == 0)
+		FLAG_Z = 1;
+	else
+		FLAG_Z = 0;
+	
+	return temp;
+}
+
 
 static inline Byte rlc(Byte a) {
 	FLAG_C = (a & 0x80) >> 7;
@@ -2247,7 +2314,6 @@ static inline Byte srl(Byte a) {
 }
 
 static inline void bit(Byte a, Byte b) {
-	assert (b < 8);
 	if ((a & (0x01 << b)) == 0)
 		FLAG_Z = 1;
 	else
@@ -2258,12 +2324,10 @@ static inline void bit(Byte a, Byte b) {
 }
 
 static inline Byte set(Byte a, Byte b) {
-	assert (b < 8);
 	return a |= (1 << b);
 }
 
 static inline Byte res(Byte a, Byte b) {
-	assert (b < 8);
 	return a &= ~(1 << b);
 }
 
