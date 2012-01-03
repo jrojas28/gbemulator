@@ -82,7 +82,7 @@ static inline void write_cart_ram(Word address, Byte value) {
 
 	switch (cart.mbc) {
 		case 2:
-			cart.ram[address + (cart.ram_bank * 0x2000)] = value;
+			cart.ram[address + (cart.ram_bank * 0x2000)] = value & 0x0f;
 			break;
 		case 3:
 			if (cart.mbc3_rtc_map > 0) {
@@ -91,7 +91,7 @@ static inline void write_cart_ram(Word address, Byte value) {
 			}
 			// fall through
 		default:
-			cart.ram[address + (cart.ram_bank * 0x2000)] = value & 0x0f;
+			cart.ram[address + (cart.ram_bank * 0x2000)] = value;
 	}
 	
 }
