@@ -127,8 +127,8 @@ void writeb(Word address, Byte value) {
 	}
 	// i/o memory
 	else if (address < MEM_IO + SIZE_IO) {
-	if (address == HWREG_KEY1)
-		fprintf(stderr, "KEY1: VALUE: %hhx\n", value);
+	//if (address == HWREG_KEY1)
+	//	fprintf(stderr, "KEY1: VALUE: %hhx\n", value);
 		/* special writes here */
 		switch (address) {
 			case HWREG_STAT:

@@ -152,83 +152,27 @@ void sound_init(void) {
     sound_mutex = SDL_CreateMutex();
 
 	start_sound();
-
-#if 0
-	err = Pa_Initialize();
-	if (err != paNoError) {
-		Pa_Terminate();
-		fprintf(stderr, "could not initialise portaudio: %s\n", Pa_GetErrorText(err));
-		exit(1);
-	}
-
-	output_parameters.device = Pa_GetDefaultOutputDevice();
-	//pdi = Pa_GetDeviceInfo(output_parameters.device);
-	output_parameters.channelCount = 2;
-	output_parameters.hostApiSpecificStreamInfo = NULL;
-	output_parameters.sampleFormat = paInt8;
-	output_parameters.suggestedLatency = Pa_GetDeviceInfo(output_parameters.device)->defaultLowOutputLatency;
-
-	err = Pa_OpenStream(&stream,
-						NULL, /* no input */
-						&output_parameters,
-						sample_rate,
-						paFramesPerBufferUnspecified,
-						paClipOff,      /* we won't output out of range samples so don't bother clipping them */
-						call_back,
-						&sound);
-
-	if (err != paNoError) {
-		Pa_Terminate();
-		fprintf(stderr, "could not open output stream: %s\n", Pa_GetErrorText(err));
-		exit(1);
-	} else {
-		stream_info = Pa_GetStreamInfo(stream);
-		printf("portaudio stream opened\n");
-		printf("\toutput latency: %fms\n", stream_info->outputLatency * 1000);
-		printf("\tsample rate: %f\n", stream_info->sampleRate);
-		if ((stream_info->outputLatency * 1000) > 150) {
-			printf("warning: high sound output latency\n");
-		}
-	}
-#endif
-
 }
 
 void sound_fini(void) {
-//	PaError err;
 	if (sound_enabled == 1) {
 		stop_sound();
 	}
 	
-/*
-	err = Pa_CloseStream(stream);
-	Pa_Terminate();
-*/
 	SDL_CloseAudio();
 	free(lfsr[LFSR_7]);
 	free(lfsr[LFSR_15]);
 }
 
 void stop_sound(void) {
-//	PaError err;
 	assert(sound_enabled == 1);
 	SDL_PauseAudio(1);
-	//err = Pa_StopStream(stream);
 	sound_enabled = 0;
 }
 
 void start_sound(void) {
-//	PaError err;
 	assert(sound_enabled == 0);
 	SDL_PauseAudio(0);
-/*
-	err = Pa_StartStream(stream);
-	if (err != paNoError) {
-		Pa_Terminate();
-		fprintf(stderr, "could not start output stream: %s\n", Pa_GetErrorText(err));
-		exit(1);
-	}
-*/
 	sound_enabled = 1;
 }
 
@@ -301,7 +245,8 @@ void sound_reset(void) {
 
 void write_sound(Word address, Byte value) {
 	unsigned freq;
-	//sound_update();
+	sound_update();
+	
 	switch (address) {
 		case HWREG_NR10:	/* channel 1 sweep */
 			sound.channel1.sweep.time = (value >> 4) & 0x07;

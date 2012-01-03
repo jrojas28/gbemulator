@@ -28,6 +28,7 @@
 #define _CART_H
 
 #include "gbem.h"
+#include "rtc.h"
 
 
 #define CART_ROM_ENTRY		0x0100
@@ -61,6 +62,7 @@ typedef struct {
 	int has_batt, has_ram, has_sram, has_rumble, has_timer, has_mmm01;
 	int is_loaded;
 	unsigned int mbc3_rtc_map;
+	Byte *mbc_reg_page;
 } Cart;
 
 int load_rom(const char* fn);
@@ -77,10 +79,21 @@ static inline Byte read_cart_ram(Word address);
 
 static inline void write_cart_ram(Word address, Byte value) {
 	extern Cart cart;
-	if (cart.mbc != 2)
-		cart.ram[address + (cart.ram_bank * 0x2000)] = value;
-	else
-		cart.ram[address + (cart.ram_bank * 0x2000)] = value & 0x0f;
+
+	switch (cart.mbc) {
+		case 2:
+			cart.ram[address + (cart.ram_bank * 0x2000)] = value;
+			break;
+		case 3:
+			if (cart.mbc3_rtc_map > 0) {
+				 rtc_set_register(cart.mbc3_rtc_map, value);
+				 break;
+			}
+			// fall through
+		default:
+			cart.ram[address + (cart.ram_bank * 0x2000)] = value & 0x0f;
+	}
+	
 }
 
 static inline Byte read_cart_ram(Word address) {

@@ -31,7 +31,9 @@
 #include <assert.h>
 #include "cart.h"
 #include "memory.h"
+#include "rtc.h"
 #include "save.h"
+
 
 static void set_switchable_rom(void);
 static void set_switchable_ram(void);
@@ -119,7 +121,7 @@ int load_rom(const char* fn) {
 	cart.rom_title[title_len] = '\0';
 	printf("\ttitle: %s", cart.rom_title);
 
-	/* detect colour gameboy cartridge */
+	// detect colour gameboy cartridge
 	switch (cart.rom[CART_COLOR]) {
 		case 0x80:
 			if (console == CONSOLE_AUTO)
@@ -317,8 +319,8 @@ int load_rom(const char* fn) {
 			printf("unrecognised rom size... assuming %uB and continuing anyway...\n", cart.rom_size);
 			break;
 	}
-	// TODO: checksum / complement check test
-	// TODO: display more information?
+
+	// TODO: checksum / complement check test?
 
 	if (cart.mbc == 2)
 		cart.ram_size = 512;
@@ -339,14 +341,26 @@ int load_rom(const char* fn) {
 	cart.rom_fn = malloc(sizeof(char) * (strlen(fn) + 1));
 	strcpy(cart.rom_fn, fn);
 
-	/* if the cart has ram, see if a ram file was saved previously */
-	if (cart.ram_size > 0) {
-		if (find_sram_file()) {
-			load_sram();
-		} else {
-			printf("could not find sram file\n");
+	if (cart.mbc == 3) {
+		cart.mbc_reg_page = malloc(SIZE_RAM_BANK_SW);
+	} else {
+		cart.mbc_reg_page = NULL;
+	}
+	cart.mbc3_rtc_map = 0;
+	
+	// see if a ram file was saved previously
+	//if (cart.ram_size > 0) {
+	if (find_sram_file()) {
+		load_sram();
+	} else {
+		printf("could not find sram file\n");
+		memset(cart.ram, 0, cart.ram_size);
+		// if there is a real time clock, but no saved time, reset it.
+		if (cart.mbc == 3) {
+			reset_rtc();
 		}
 	}
+	//}
 	return 0;
 	
 }
@@ -354,23 +368,21 @@ int load_rom(const char* fn) {
 void cart_reset(void) {
 	// cant reset a nonloaded cartridge
 	assert(cart.is_loaded == 1);
-	// set up some defaults
 	cart.rom_bank = 1;
 	cart.rom_block = 0;
 	cart.ram_bank = 0;
-	//bzero(cart.ram, cart.ram_size); // supposed to be commented!
 	if (cart.mbc == 1)
 		cart.mbc_mode = MBC1_MODE_16MROM_8KRAM;
 	set_vector_block(MEM_ROM_BANK_0, cart.rom, SIZE_ROM_BANK_0);
-	//mem.setRom(rom);
 	set_switchable_rom();
 	set_switchable_ram();
+	cart.mbc3_rtc_map = 0;
 }
 
 void unload_rom(void) {
 	// check that rom is already loaded
 	assert(cart.is_loaded == 1);
-	if (cart.ram_size > 0)
+	if ((cart.ram_size > 0) || (cart.mbc == 3))
 		save_sram();
 	free(cart.ram);
 	free(cart.rom);
@@ -385,19 +397,18 @@ void unload_rom(void) {
 
 
 static void set_switchable_rom(void) {
-	//mem.setRomSw(rom_ + (romBank_ * 0x4000) + (cart.rom_block * 0x80000));
 	set_vector_block(MEM_ROM_BANK_SW, cart.rom + (cart.rom_bank * 0x4000) + 
 						(cart.rom_block * 0x80000), SIZE_ROM_BANK_SW);
 }
 
 static void set_switchable_ram(void) {
-	//mem.setExtRamSw(ram_ + (cart.ram_bank * 0x4000));
 	set_vector_block(MEM_RAM_BANK_SW, cart.ram + (cart.ram_bank * 0x2000), 
 						SIZE_RAM_BANK_SW);
 }
 
-static void mbc3_latch_clock(void) {
-	
+static void mbc3_map_register(void) {
+	memset(cart.mbc_reg_page, rtc_get_register(cart.mbc3_rtc_map), SIZE_RAM_BANK_SW);
+	set_vector_block(MEM_RAM_BANK_SW, cart.mbc_reg_page, SIZE_RAM_BANK_SW);
 }
 
 /* FIXME: 	check for bad bank selection: prevent overflow exploits
@@ -486,17 +497,20 @@ void write_rom(Word address, Byte value) {
 			// mbc3 ram bank / rtc map selection
 			if ((address >= 0x4000) && (address < 0x6000)) {
 				if ((value >= 0x08) && (value <= 0x0C)) {
-					cart.mbc3_rtc_map = value;
+					//cart.mbc3_rtc_map = value;
+					fprintf(stderr, "rtc map register: %hhx\n", value - 0x08);
+					//mbc3_map_register();
 				} else {
 					cart.ram_bank = value & 0x03;
+					cart.mbc3_rtc_map = 0;
 					set_switchable_ram();
 				}
 				return;
 			}
 			// mbc3 latch clock data
 			if ((address >= 0x6000) && (address < 0x8000)) {
-				if ((value & 0xFE) == 0) {
-					// STUBBED: Latch clock data here
+				if (value == 0x01) {
+					rtc_latch();
 				}
 				return;
 			}
@@ -556,10 +570,8 @@ Byte read_rom(Word address) {
 	}
 }
 
-/*
- * saves the state of the ram to a file. 
- * TODO: place the sram file somewhere intelligent
- */
+// saves the state of the ram to a file. 
+// TODO: place the sram file somewhere intelligent
 static void save_sram(void) {
 	char *fn;
 	FILE *fp;
@@ -583,27 +595,34 @@ static void save_sram(void) {
 		free(fn);
 		return;
 	}
+
+	if (cart.mbc == 3) {
+		rtc_save_sram(fp);
+	}
 	fclose(fp);
 	free(fn);
 }
 
-/*
- * searches for an sram files. returns 1 if found, otherwise 0.
- */
+
+// searches for an sram files. returns 1 if found, otherwise 0.
 int find_sram_file(void) {
 	char *fn;
 	struct stat fstats;
 	fn = malloc(strlen(cart.rom_fn) + strlen(ram_ext) + 1);
 	strcpy(fn, cart.rom_fn);
 	strcat(fn, ram_ext);
-	/* check if file is accessible */
+	// check if file is accessible
 	if (stat(fn, &fstats) != 0)	
 		return 0;
-	/* check if file is the correct size */
+	else
+		return 1;
+#if 0
+	// check if file is the correct size
 	if (fstats.st_size == cart.ram_size)
 		return 1;
 	else
 		return 0;
+#endif
 }
 
 static void load_sram(void) {
@@ -629,6 +648,10 @@ static void load_sram(void) {
 		free(fn);
 		return;
 	}
+
+	if (cart.mbc == 3) {
+		rtc_load_sram(fp);
+	} 
 	fclose(fp);
 	free(fn);	
 }
