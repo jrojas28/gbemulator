@@ -321,7 +321,7 @@ void display_update(unsigned int cycles) {
 			if (display.is_hdma_active) {
 				launch_hdma(1);
 				hdma_length = read_io(HWREG_HDMA5) & 0x7f;
-				fprintf(stderr, "%hhu", hdma_length);
+				//fprintf(stderr, "%hhu", hdma_length);
 				if (hdma_length == 0) {
 					display.is_hdma_active = 0;
 					write_io(HWREG_HDMA5, 0xff);

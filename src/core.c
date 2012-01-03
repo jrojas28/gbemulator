@@ -58,7 +58,7 @@
 
 
 static inline void handle_interrupts();
-static inline void handle_interrupt(Byte interrupt, Word Vector, Byte reg_if);
+static inline void handle_interrupt(Byte interrupt, Word Vector, Byte reg_if, Byte reg_ie);
 
 
 /* arithmetic */
@@ -99,8 +99,6 @@ static inline void jr(Byte a);
 static inline void call(Word a);
 static inline void rst(Byte a);
 static inline void ret();
-
-static inline void handle_interrupts();
 
 extern int console;
 extern int console_mode;
@@ -1792,43 +1790,26 @@ static inline void handle_interrupts() {
 	reg_ie = readb(HWREG_IE);
 	if (reg_if == 0)
 		return;
-	// check for vblank interrupt, and check if it is enabled
-	if ((reg_if & INT_VBLANK) && (reg_ie & INT_VBLANK)) {
-		handle_interrupt(INT_VBLANK, MEM_INT_VBLANK, reg_if);
-		return;
-	}
-	// check for stat interrupt, and check if it is enabled
-	if ((reg_if & INT_STAT) && (reg_ie & INT_STAT)) {
-		handle_interrupt(INT_STAT, MEM_INT_STAT, reg_if);
-		return;
-	}
-	// check for timer interrupt, and check if it is enabled
-	if ((reg_if & INT_TIMER) && (reg_ie & INT_TIMER)) {
-		handle_interrupt(INT_TIMER, MEM_INT_TIMER, reg_if);
-		return;
-	}
-	// check for serial interrupt, and check if it is enabled
-	if ((reg_if & INT_SERIAL)  && (reg_ie & INT_SERIAL)) {
-		handle_interrupt(INT_SERIAL, MEM_INT_SERIAL, reg_if);
-		return;
-	}
-	// check for button interrupt, and check if it is enabled
-	if ((reg_if & INT_BUTTON) && (reg_ie & INT_BUTTON)) {
-		handle_interrupt(INT_BUTTON, MEM_INT_BUTTON, reg_if);
-		return;
-	}
+	handle_interrupt(INT_VBLANK, MEM_INT_VBLANK, reg_if, reg_ie);
+	handle_interrupt(INT_STAT, MEM_INT_STAT, reg_if, reg_ie);
+	handle_interrupt(INT_TIMER, MEM_INT_TIMER, reg_if, reg_ie);
+	handle_interrupt(INT_SERIAL, MEM_INT_SERIAL, reg_if, reg_ie);
+	handle_interrupt(INT_BUTTON, MEM_INT_BUTTON, reg_if, reg_ie);
+
 }
 
-static inline void handle_interrupt(Byte interrupt, Word Vector, Byte reg_if) {
-	// handle only if interrupts are actually enabled
-	if (core.ime != 0) {
-		writeb(HWREG_IF, reg_if & ~(interrupt));
-		core.ime = 0;
-		push(REG_PC);
-		REG_PC = Vector;
+static inline void handle_interrupt(Byte interrupt, Word Vector, Byte reg_if, Byte reg_ie) {
+	if ((reg_if & interrupt) && (reg_ie & interrupt)) {
+		// handle only if interrupts are actually enabled
+		if (core.ime != 0) {
+			writeb(HWREG_IF, reg_if & ~(interrupt));
+			core.ime = 0;
+			push(REG_PC);
+			REG_PC = Vector;
+		}
+		// core is unhalted regardless of whether interrupts are enabled
+		core.is_halted = 0;
 	}
-	// core is unhalted regardless of whether interrupts are enabled
-	core.is_halted = 0;
 }
 
 // ADD
