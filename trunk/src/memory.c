@@ -129,6 +129,18 @@ void writeb(Word address, Byte value) {
 	else if (address < MEM_IO + SIZE_IO) {
 	//if (address == HWREG_KEY1)
 	//	fprintf(stderr, "KEY1: VALUE: %hhx\n", value);
+
+		/* sound registers are dealt with in the sound code */
+		if ((address >= 0xff10) && (address < 0xff30)) {
+			write_sound(address, value);
+			return;
+		}
+		/* sound wave data is dealt with in the sound code */
+		if ((address >= 0xff30) && (address  <= 0xff3f)) {
+			write_wave(address, value);
+			return;
+		}
+
 		/* special writes here */
 		switch (address) {
 			case HWREG_STAT:
@@ -148,26 +160,17 @@ void writeb(Word address, Byte value) {
 			case HWREG_NR52:
 				himem[address - MEM_IO] = (himem[address - MEM_IO] & 0x0f) | (value & 0x80);
 				break;
-			default:
-				himem[address - MEM_IO] = value;
-				break;
-		}
-		/* sound registers are dealt with in the sound code */
-		if ((address >= 0xff10) && (address < 0xff30)) {
-			write_sound(address, value);
-			return;
-		}
-		/* sound wave data is dealt with in the sound code */
-		if ((address >= 0xff30) && (address  <= 0xff3f)) {
-			write_wave(address, value);
-			return;
-		}
-
-		switch(address) {
 			case HWREG_DIV:
 				// If DIV is written to, it is set to 0.
 				himem[address - MEM_IO] = 0;
 				break;
+			default:
+				himem[address - MEM_IO] = value;
+				//printf("%hx: %hhx\n", address, value);
+				break;
+		}
+
+		switch(address) {
 			case HWREG_BGP:
 				if (console_mode != MODE_GBC_ENABLED) 
 					update_bg_palette(0, value);

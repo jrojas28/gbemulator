@@ -131,6 +131,11 @@ int execute_cycles(int max_cycles) {
 		if (debugging)
 			disasm_exec(REG_PC);
 
+		if (REG_PC == 0xc4d7) {
+			printf("%hx\n", readb(0xff10));
+			//exit(0);
+		}
+
 		// switch opcode
 		switch (readb(REG_PC++)) {
 			/* 8bit loads: imm -> reg */
@@ -1618,6 +1623,9 @@ int execute_cycles(int max_cycles) {
 				break;
 			case 0x00:  // NOP
 				cycles = 4;
+				break;
+			case 0xED:	// DEBUG
+				getchar();
 				break;
 #if 0
 			/* debugging instructions (ie. not on real gameboy) */
