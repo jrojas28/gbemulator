@@ -107,6 +107,7 @@ union UWord {
 #define HWREG_NR12				0xFF12
 #define HWREG_NR13				0xFF13
 #define HWREG_NR14				0xFF14
+#define HWREG_NR20				0xFF15
 #define HWREG_NR21				0xFF16
 #define HWREG_NR22				0xFF17
 #define HWREG_NR23				0xFF18
@@ -116,6 +117,7 @@ union UWord {
 #define HWREG_NR32				0xFF1C
 #define HWREG_NR33				0xFF1D
 #define HWREG_NR34				0xFF1E
+#define HWREG_NR40				0xFF1F
 #define HWREG_NR41				0xFF20
 #define HWREG_NR42				0xFF21
 #define HWREG_NR43				0xFF22

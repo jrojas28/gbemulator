@@ -498,7 +498,7 @@ void write_rom(Word address, Byte value) {
 			if ((address >= 0x4000) && (address < 0x6000)) {
 				if ((value >= 0x08) && (value <= 0x0C)) {
 					cart.mbc3_rtc_map = value;
-					fprintf(stderr, "rtc map register: %hhx\n", value - 0x08);
+					//fprintf(stderr, "rtc map register: %hhx\n", value - 0x08);
 					mbc3_map_register();
 				} else {
 					cart.ram_bank = value & 0x03;

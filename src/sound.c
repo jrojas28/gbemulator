@@ -63,7 +63,7 @@ static void clock_lfsr(NoiseChannel *ns, int t);
 static void clock_length(Length *l, unsigned ch);
 static void clock_envelope(Envelope *e);
 static void clock_sweep(SquareChannel *sq);
-static int get_soonest_clock(unsigned a, unsigned b, unsigned c, unsigned d, unsigned *clocks);
+static int get_soonest_clock(unsigned a, unsigned b, unsigned c, unsigned d, int *clocks);
 static void sweep_freq();
 static void add_delta(int side, unsigned t, short amp, short *last_delta);
 
@@ -96,7 +96,7 @@ void sound_init(void) {
 	unsigned char r7;
 	unsigned short r15;
 	unsigned int i;
-	SDL_AudioSpec desired, actual;
+	SDL_AudioSpec desired;
 	
 	lfsr_size[LFSR_7] = LFSR_7_SIZE;
 	lfsr_size[LFSR_15] = LFSR_15_SIZE;
@@ -150,7 +150,7 @@ void sound_init(void) {
 	blip_set_rates(blip_right, 4194304, sample_rate);
 
     sound_mutex = SDL_CreateMutex();
-
+	sound_enabled = 0;
 	start_sound();
 }
 
@@ -158,7 +158,6 @@ void sound_fini(void) {
 	if (sound_enabled == 1) {
 		stop_sound();
 	}
-	
 	SDL_CloseAudio();
 	free(lfsr[LFSR_7]);
 	free(lfsr[LFSR_15]);
@@ -177,13 +176,12 @@ void start_sound(void) {
 }
 
 void sound_reset(void) {
-	int i;
 	write_io(HWREG_NR10, 0x80);
 	write_io(HWREG_NR11, 0xbf);
 	write_io(HWREG_NR12, 0xf3);
 	write_io(HWREG_NR13, 0xff);
 	write_io(HWREG_NR14, 0xbf);
-	/* write_io(HWREG_NR20, 0xff); */
+	write_io(HWREG_NR20, 0xff);
 	write_io(HWREG_NR21, 0x3f);
 	write_io(HWREG_NR22, 0x00);
 	write_io(HWREG_NR23, 0xff);
@@ -193,7 +191,7 @@ void sound_reset(void) {
 	write_io(HWREG_NR32, 0x9f);
 	write_io(HWREG_NR33, 0xff);
 	write_io(HWREG_NR34, 0xbf);
-	/* write_io(HWREG_NR40, 0xff); */
+	write_io(HWREG_NR40, 0xff);
 	write_io(HWREG_NR41, 0xff);
 	write_io(HWREG_NR42, 0x00);
 	write_io(HWREG_NR43, 0x00);
@@ -205,6 +203,10 @@ void sound_reset(void) {
 		write_io(HWREG_NR52, 0xf0);
 	else
 		write_io(HWREG_NR52, 0xf1);
+
+	for (int i = 0xff27; i < 0xff30; i++) {
+		write_io((Word)i, 0xff);
+	}
 	
 	memset(&sound.channel1, 0, sizeof(sound.channel1));
 	memset(&sound.channel2, 0, sizeof(sound.channel2));
@@ -229,10 +231,10 @@ void sound_reset(void) {
 
 
 	if ((console == CONSOLE_GBC) || (console == CONSOLE_GBA)) {
-		for (i = 0; i < 16; i++)
+		for (int i = 0; i < 16; i++)
 			write_wave(0xff30 + i, gbc_wave[i]);
 	} else {
-		for (i = 0; i < 16; i++)
+		for (int i = 0; i < 16; i++)
 			write_wave(0xff30 + i, dmg_wave[i]);
 	}
 
@@ -246,6 +248,10 @@ void sound_reset(void) {
 void write_sound(Word address, Byte value) {
 	unsigned freq;
 	sound_update();
+
+	// if sound is off, registers except NR52 cannot be written
+	if ((address != HWREG_NR52) && (!sound.is_on))
+		return;
 	
 	switch (address) {
 		case HWREG_NR10:	/* channel 1 sweep */
@@ -253,20 +259,24 @@ void write_sound(Word address, Byte value) {
 			//sound.channel1.sweep.time_counter = sound.channel1.sweep.time;
 			sound.channel1.sweep.is_decreasing = (value >> 3) & 0x01;
 			sound.channel1.sweep.shift_number = value & 0x07;
+			write_io(address, value | 0x80);	// set read only bits
 			break;
 		case HWREG_NR11: 	/* channel 1 length / cycle duty */
 			sound.channel1.length.length = 64 - (value & 0x3f);
 			sound.channel1.duty.duty = value >> 6;
+			write_io(address, value | 0x3f);	// set read only bits
 			break;
 		case HWREG_NR12:	/* channel 1 envelope */
 			sound.channel1.envelope.length = value & 0x07;
 			sound.channel1.envelope.is_increasing = value & 0x08;
 			sound.channel1.envelope.volume = value >> 4;
+			write_io(address, value);
  			break;
 		case HWREG_NR13:	/* channel 1 frequency lo */
 			freq = (sound.channel1.freq & 0x700) | value;
 			sound.channel1.freq = freq;
 			sound.channel1.period = 2048 - freq;
+			write_io(address, 0xff);	// set read only bits
 			break;
 		case HWREG_NR14:	/* frequency hi, init, counter selection */
 			freq = (sound.channel1.freq & 0xff) | ((value & 0x07) << 8);
@@ -294,20 +304,27 @@ void write_sound(Word address, Byte value) {
 				if (sound.channel1.sweep.time && sound.channel1.sweep.shift_number)
 					sweep_freq();
 			}
+			write_io(address, value | 0xbf);	// set read only bits
+			break;
+		case HWREG_NR20:	// NR20 - not a real register. but read only
+			write_io(address, 0xff);	// set read only bits
 			break;
 		case HWREG_NR21: 	/* channel 2 length / cycle duty */
 			sound.channel2.length.length = 64 - (value & 0x3f);
 			sound.channel2.duty.duty = value >> 6;
+			write_io(address, value | 0x3f);	// set read only bits
 			break;
 		case HWREG_NR22:	/* channel 2 envelope */
 			sound.channel2.envelope.length = value & 0x07;
 			sound.channel2.envelope.is_increasing = value & 0x08;
 			sound.channel2.envelope.volume = value >> 4;
+			write_io(address, value);
  			break;
 		case HWREG_NR23:	/* channel 2 frequency lo */
 			freq = (sound.channel2.freq & 0x700) | value;
 			sound.channel2.freq = freq;
 			sound.channel2.period = 2048 - freq;
+			write_io(address, 0xff);	// set read only bits
 			break;
 		case HWREG_NR24:	/* channel 2 frequency hi, init, counter selection */
 			freq = (sound.channel2.freq & 0xff) | ((value & 0x07) << 8);
@@ -324,22 +341,27 @@ void write_sound(Word address, Byte value) {
 					sound.channel2.length.length = 2047;
 				mark_channel_on(2);
 			}
+			write_io(address, value | 0xbf);	// set read only bits
 			break;
 		case HWREG_NR30: 	/* channel 3 length / cycle duty */
 			sound.channel3.length.is_on = (value & 0x80) ? 1 : 0;
+			write_io(address, value | 0x7f);	// set read only bits
 			break;
 		case HWREG_NR31: 	/* channel 3 length */
 			sound.channel3.length.length = 256 - value; /* FIXME should be more */
+			write_io(address, 0xff);	// set read only bits
 			break;
 		case HWREG_NR32:	/* channel 3 level */
 			sound.channel3.volume = ((value >> 5) & 0x03) - 1;
 			if (sound.channel3.volume == -1)
 				sound.channel3.volume = 16;
+			write_io(address, value | 0x9f);	// set read only bits
  			break;
 		case HWREG_NR33:	/* channel 3 frequency lo */
 			freq = (sound.channel3.freq & 0x700) | value;
 			sound.channel3.freq = freq;
 			sound.channel3.period = (2048 - freq) << 1;
+			write_io(address, 0xff);	// set read only bits
 			break;
 		case HWREG_NR34:	/* channel 3 frequency hi, init, counter selection */
 			freq = (sound.channel3.freq & 0xff) | ((value & 0x07) << 8);
@@ -354,18 +376,25 @@ void write_sound(Word address, Byte value) {
 					sound.channel3.length.length = 2047;
 				mark_channel_on(3);
 			}
+			write_io(address, value | 0xbf);	// set read only bits
+			break;
+		case HWREG_NR40:	// NR40 - not a real register. but read only
+			write_io(address, 0xff);	// set read only bits
 			break;
 		case HWREG_NR41: 	/* channel 4 length */
 			sound.channel4.length.length = 64 - (value & 0x3f);
+			write_io(address, 0xff);	// set read only bits
 			break;
 		case HWREG_NR42:	/* channel 4 envelope */
 			sound.channel4.envelope.length = value & 0x07;
 			sound.channel4.envelope.is_increasing = value & 0x08;
 			sound.channel4.envelope.volume = value >> 4;
+			write_io(address, value);
  			break;
 		case HWREG_NR43:	/* channel 4 poly counter */
 			sound.channel4.period = 4 * ((value & 0x07) + 1) << (((value >> 4) & 0x0f) + 1);
 			sound.channel4.lfsr.size = (value >> 3) & 0x01;
+			write_io(address, value);
 			break;
 		case HWREG_NR44:	/* channel 4 init, counter selection */
 			sound.channel4.length.is_continuous = value & 0x40 ? 0 : 1;
@@ -379,13 +408,12 @@ void write_sound(Word address, Byte value) {
 					sound.channel4.length.length = 2047;
 				mark_channel_on(4);
 			}
+			write_io(address, value | 0xbf);	// set read only bits
 			break;
 		case HWREG_NR50:	/* L/R volume control */
 			sound.right_level = value & 0x07;
 			sound.left_level = value >> 4;
-			break;
-		case HWREG_NR52:	/* sound on/off */
-			sound.is_on = (value & 0x80) ? 1 : 0;
+			write_io(address, value);
 			break;
 		case HWREG_NR51:	/* output terminal selection */
 			sound.channel4.is_on_right = (value & 0x80) ? 1 : 0;
@@ -396,8 +424,40 @@ void write_sound(Word address, Byte value) {
 			sound.channel3.is_on_left = (value & 0x04) ? 1 : 0;
 			sound.channel2.is_on_left = (value & 0x02) ? 1 : 0;
 			sound.channel1.is_on_left = (value & 0x01) ? 1 : 0;
+			write_io(address, value);
 			break;
-		default:
+		case HWREG_NR52:	/* sound on/off */
+			// if the sound has just been turned off, clear all regs
+			if ((sound.is_on) && (!(value & 0x80))) {
+				write_io(HWREG_NR10, 0x80);
+				write_io(HWREG_NR11, 0x3f);
+				write_io(HWREG_NR12, 0x00);
+				write_io(HWREG_NR13, 0xff);
+				write_io(HWREG_NR14, 0xbf);
+				write_io(HWREG_NR20, 0xff);
+				write_io(HWREG_NR21, 0x3f);
+				write_io(HWREG_NR22, 0x00);
+				write_io(HWREG_NR23, 0xff);
+				write_io(HWREG_NR24, 0xbf);
+				write_io(HWREG_NR30, 0x7f);
+				write_io(HWREG_NR31, 0xff);
+				write_io(HWREG_NR32, 0x9f);
+				write_io(HWREG_NR33, 0xff);
+				write_io(HWREG_NR34, 0xbf);
+				write_io(HWREG_NR40, 0xff);
+				write_io(HWREG_NR41, 0xff);
+				write_io(HWREG_NR42, 0x00);
+				write_io(HWREG_NR43, 0x00);
+				write_io(HWREG_NR44, 0xbf);
+				write_io(HWREG_NR50, 0x00);
+				write_io(HWREG_NR51, 0x00);
+				write_io(HWREG_NR52, 0x70);
+			}
+			sound.is_on = (value & 0x80) ? 1 : 0;
+			write_io(address, (value & 0x80) | 0x70);
+			break;
+		default:	// all other sound memory locations are read only
+			write_io(address, 0xff);	// set read only bits
 			break;
 	}
 }
@@ -410,6 +470,7 @@ void write_wave(Word address, Byte value) {
 	const short scale = ((HIGH * 2) / 15);
 	wave_samples[(address - 0xff30) * 2] = ((value >> 4) - 7) * scale;
 	wave_samples[(address - 0xff30) * 2 + 1] = ((value & 0x0f) - 7) * scale;
+	write_io(address, value);	
 }
 
 
@@ -677,7 +738,7 @@ static void clock_sweep(SquareChannel *sq) {
 	}	
 }
 
-static int get_soonest_clock(unsigned a, unsigned b, unsigned c, unsigned d, unsigned *clocks) {
+static int get_soonest_clock(unsigned a, unsigned b, unsigned c, unsigned d, int *clocks) {
 	int soonest;
 	if (a < b) {
 		if (a < c) {
