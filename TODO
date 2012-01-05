@@ -1,38 +1,38 @@
 TODO
 	Bugs
-		Fix H/GDMA?
-		Fix sound bugs DONE
-		Fix time allocated to CPU and timer
-		Fix DAA instruction
-		Fix HALT instruction
-			halts until an interrupt is received, even if they are disabled: they are just not serviced (i believe)
+		Fix H/GDMA?										????
+		Fix sound bugs 									DONE
+		Fix time allocated to CPU and timer				****************
+		Fix DAA instruction								DONE
+		Fix HALT instruction							DONE
 		Implement STOP instruction
 		Initialise sound/graphics data properly!
-		Find out why some of the demos dont work properly
 		Fix weird slow downs
-		Fix slight graphical inaccuracies: sprites not lining up exactly with background?
+		Fix slight graphical inaccuracies: sprites not lining up exactly with background?		Why is this?
 	Rewrites
 		the SDL_Delay() calling code is bad: needs to work on a FPS basis?
-		consider making the tile cache not use SDL surfaces/blitting
+		consider making the tile cache not use SDL surfaces/blitting			DONE
 	Implementation
-		serial hack (IS THIS DONE?)
-		MBC3 real time clock
-		Implement display off feature: the absense of this causes lots of problems: DONE (I HOPE)
-		Sprite ordering
+		serial hack (IS THIS DONE?)						DONE???
+		MBC3 real time clock							DONE
+		Implement display off feature: the absense of this causes lots of problems: DONE
+		Sprite ordering									?????
 		State save/load DONE (mostly)
-		Pause: stops sound! DONE
-		Nice scaling algorithms (hqx, etc)
-		Debugger: bit instructions
-		Simple disassembler:
-		Gameboy Color support IN PROGRESS
-		UI
+		Gameboy Color support 							DONE
 		Joystick support
 		internal GB and GBC boot rom support
 		settings/config file
+	Tidying
+		Tidy memory code. its horrible
 	Nice extras
 		video/sound file output
 		speed adjustment
 		dump tiles
+		UI
+		Full-featured debugger
+		Nice scaling algorithms (hqx, etc)
+		Simple disassembler
+			Bit instructions
 		
 	Check behaviour on real hardware
 		Sound 
@@ -40,10 +40,3 @@ TODO
 		Display
 			How LY=LCY coincidences are dealt with
 
-
-display cache rewrite
-	merge sprite/tile
-		differences:
-			sprite can have height of 16 or 8
-			tile may need to be drawn with the colours seperated
-	fix sprite bg/w priority
