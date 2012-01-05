@@ -249,6 +249,8 @@ void write_sound(Word address, Byte value) {
 	unsigned freq;
 	sound_update();
 
+	//fprintf(stderr, "%hx: %hhx\n", address, value);
+
 	// if sound is off, registers except NR52 cannot be written
 	if ((address != HWREG_NR52) && (!sound.is_on))
 		return;
@@ -285,12 +287,7 @@ void write_sound(Word address, Byte value) {
 			sound.channel1.length.is_continuous = value & 0x40 ? 0 : 1;
 			/* trigger? */
 			if (value & 0x80) {
-/*
-				if ((sound.channel1.length_counter != 0) && (sound.channel1.is_on))
-					sound.channel1.envelope.is_zombie = 1;
-				else
-					sound.channel1.envelope.is_zombie = 0;
-*/				
+				//fprintf(stderr, "trigger. on: %d, len: %d\n", sound.channel1.length.is_on, sound.channel1.length.length);
 				sound.channel1.envelope.volume = read_io(HWREG_NR12) >> 4;
 				sound.channel1.length.is_on = 1;
 				sound.channel1.envelope.length_counter = sound.channel1.envelope.length;
@@ -299,7 +296,7 @@ void write_sound(Word address, Byte value) {
 				sound.channel1.sweep.time_counter = sound.channel1.sweep.time;
 				/* if length is not reloaded, maximum length is played */
 				if (sound.channel1.length.length == 0)
-					sound.channel1.length.length = 2047;
+					sound.channel1.length.length = 63;
 				mark_channel_on(1);
 				if (sound.channel1.sweep.time && sound.channel1.sweep.shift_number)
 					sweep_freq();
@@ -338,7 +335,7 @@ void write_sound(Word address, Byte value) {
 				sound.channel2.envelope.length_counter = sound.channel2.envelope.length;
 				/* if length is not reloaded, maximum length is played */
 				if (sound.channel2.length.length == 0)
-					sound.channel2.length.length = 2047;
+					sound.channel2.length.length = 63;
 				mark_channel_on(2);
 			}
 			write_io(address, value | 0xbf);	// set read only bits
@@ -373,7 +370,7 @@ void write_sound(Word address, Byte value) {
 				sound.channel3.length.is_on = 1;
 				/* if length is not reloaded, maximum length is played */
 				if (sound.channel3.length.length == 0)
-					sound.channel3.length.length = 2047;
+					sound.channel3.length.length = 255;
 				mark_channel_on(3);
 			}
 			write_io(address, value | 0xbf);	// set read only bits
@@ -405,7 +402,7 @@ void write_sound(Word address, Byte value) {
 				sound.channel4.envelope.length_counter = sound.channel4.envelope.length;
 				/* if length is not reloaded, maximum length is played */
 				if (sound.channel4.length.length == 0)
-					sound.channel4.length.length = 2047;
+					sound.channel4.length.length = 63;
 				mark_channel_on(4);
 			}
 			write_io(address, value | 0xbf);	// set read only bits
@@ -699,6 +696,7 @@ static void clock_length(Length *l, unsigned ch) {
 	if (!l->is_continuous) {
 		--l->length;
 		if (l->length == 0) {
+			//fprintf(stderr, "c1 done\n");
 			mark_channel_off(ch);
 			l->is_on = 0;
 		}
